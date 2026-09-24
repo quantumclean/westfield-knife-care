@@ -22,12 +22,15 @@ export interface CreateOrderResult {
 }
 
 /**
- * Pick the experiment an order is recorded under. Any experiment that still
- * exists in the registry is honoured, whether or not it is currently
- * accepting fresh random traffic — a paused or concluded experiment must
- * keep charging and labelling orders exactly as it always did, since a
- * printed flyer or a returning customer's browser can still be pinned to
- * it. Only a completely unknown id falls back to the default experiment.
+ * Pick the experiment an order is recorded under: a currently active
+ * experiment, or one permanently pinned to a physical flyer (see
+ * `isHonorablePin`), charges and labels the order exactly as it always did —
+ * even paused or concluded, since a printed flyer or a returning customer's
+ * browser can still be pinned to it. Anything else, including an id that was
+ * merely active in the past but was never printed on anything, falls back
+ * to the default experiment: the full registry ships inside the public web
+ * bundle, so a client-supplied experiment_id is not proof the customer ever
+ * saw that offer.
  */
 export function resolveForOrder(experimentId: string): ResolvedExperiment {
   return resolveExperimentOrDefault(experimentId);

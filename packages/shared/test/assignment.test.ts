@@ -66,22 +66,35 @@ describe("selectExperiment", () => {
     expect(chosen).toBeDefined();
   });
 
-  it("honors a requested pin permanently, even paused or concluded (a flyer's printed price must never move)", () => {
+  it("honors a requested flyer-pinned experiment permanently, even paused or concluded", () => {
+    // experiment-002 is the real flyer-pinned id for the $49 flyer.
+    const registry = [
+      make("experiment-a", 1),
+      { ...make("experiment-002", 0), status: "concluded" as const },
+    ];
+    const chosen = selectExperiment({ requestedId: "experiment-002", visitorId: "v1" }, registry);
+    expect(chosen?.id).toBe("experiment-002");
+  });
+
+  it("honors a stored flyer-pinned experiment permanently, even paused or concluded", () => {
+    const registry = [
+      make("experiment-a", 1),
+      { ...make("experiment-002", 0), status: "paused" as const },
+    ];
+    const chosen = selectExperiment({ storedId: "experiment-002", visitorId: "v1" }, registry);
+    expect(chosen?.id).toBe("experiment-002");
+  });
+
+  it("does NOT honor a concluded pin that was never printed on a flyer — falls through instead", () => {
+    // "experiment-b" here is a synthetic, organic-only id: not in FLYER_ROUTES.
     const registry = [
       make("experiment-a", 1),
       { ...make("experiment-b", 0), status: "concluded" as const },
     ];
-    const chosen = selectExperiment({ requestedId: "experiment-b", visitorId: "v1" }, registry);
-    expect(chosen?.id).toBe("experiment-b");
-  });
-
-  it("honors a stored pin permanently, even paused or concluded", () => {
-    const registry = [
-      make("experiment-a", 1),
-      { ...make("experiment-b", 0), status: "paused" as const },
-    ];
-    const chosen = selectExperiment({ storedId: "experiment-b", visitorId: "v1" }, registry);
-    expect(chosen?.id).toBe("experiment-b");
+    const requested = selectExperiment({ requestedId: "experiment-b", visitorId: "v1" }, registry);
+    expect(requested?.id).not.toBe("experiment-b");
+    const stored = selectExperiment({ storedId: "experiment-b", visitorId: "v1" }, registry);
+    expect(stored?.id).not.toBe("experiment-b");
   });
 
   it("only weighs currently active experiments for a fresh, unpinned visitor", () => {

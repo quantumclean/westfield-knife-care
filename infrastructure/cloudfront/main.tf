@@ -151,9 +151,23 @@ resource "aws_cloudfront_distribution" "site" {
   }
 
   # SPA fallback. This is also what makes flyer vanity paths (/a, /b — see
-  # packages/shared/src/flyer-routes.ts) work with no extra routing: S3 404s
-  # on them (there is no a.html), CloudFront serves index.html instead, and
-  # the app reads the original path from the browser to pin the experiment.
+  # packages/shared/src/flyer-routes.ts) work with no extra routing: there is
+  # no a.html in the bucket, CloudFront serves index.html instead, and the
+  # app reads the original path from the browser to pin the experiment.
+  #
+  # Both 403 and 404 are handled: the bucket policy grants CloudFront's OAC
+  # only s3:GetObject, not s3:ListBucket, and S3's documented behavior for a
+  # missing key under a GetObject-only principal is 403 Access Denied, not
+  # 404 Not Found (S3 does not reveal whether the key or the permission is
+  # what's missing). Handling only 404 here would leave every extension-less
+  # path — including /a and /b — serving raw S3 XML instead of the app.
+  custom_error_response {
+    error_code            = 403
+    response_code         = 404
+    response_page_path    = "/index.html"
+    error_caching_min_ttl = 60
+  }
+
   custom_error_response {
     error_code            = 404
     response_code         = 404

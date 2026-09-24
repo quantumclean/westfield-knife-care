@@ -1,3 +1,4 @@
+import { FLYER_ROUTES } from "./flyer-routes.ts";
 import type { Experiment, OfferVersion, PriceVersion, ResolvedExperiment } from "./types.ts";
 
 /**
@@ -119,12 +120,43 @@ export function resolveExperiment(
   return { experiment, offer, price };
 }
 
-/** Like resolveExperiment but falls back to DEFAULT_EXPERIMENT_ID. */
+/**
+ * True when `id` may be used right now to show or charge for an experiment,
+ * whether that's a fresh visitor or one returning to a pin:
+ *
+ * - it is one of today's currently active, weighted experiments, or
+ * - it is one of the fixed ids a physical flyer promises forever
+ *   (`FLYER_ROUTES`), regardless of the experiment's current status.
+ *
+ * A flyer's printed price is a promise we cannot take back once it has been
+ * handed to someone, so those ids stay honorable after the experiment is
+ * paused or concluded. Nothing else does: a draft that was never shown to
+ * anyone, or a concluded *organic-only* test nobody holds a physical claim
+ * on, must not be reachable just because a client asserts its id — the full
+ * registry, including old ids, ships inside the web bundle and is trivially
+ * readable, so this is a real boundary, not obscurity.
+ */
+export function isHonorablePin(
+  id: string,
+  experiments: readonly Experiment[] = EXPERIMENTS,
+): boolean {
+  if (activeExperiments(experiments).some((e) => e.id === id)) return true;
+  return (
+    FLYER_ROUTES.some((r) => r.experiment_id === id) && getExperiment(id, experiments) !== undefined
+  );
+}
+
+/**
+ * Like resolveExperiment, but only for an honorable id (see
+ * `isHonorablePin`) — anything else, including an unknown id, falls back to
+ * DEFAULT_EXPERIMENT_ID.
+ */
 export function resolveExperimentOrDefault(
   id: string | null | undefined,
   experiments: readonly Experiment[] = EXPERIMENTS,
 ): ResolvedExperiment {
-  const resolved = id ? resolveExperiment(id, experiments) : undefined;
+  const resolved =
+    id && isHonorablePin(id, experiments) ? resolveExperiment(id, experiments) : undefined;
   if (resolved) return resolved;
   const fallback = resolveExperiment(DEFAULT_EXPERIMENT_ID, experiments);
   if (!fallback) {
@@ -161,5 +193,10 @@ export function validateRegistry(): string[] {
   }
   if (!getExperiment(DEFAULT_EXPERIMENT_ID)) problems.push("default experiment missing");
   if (activeExperiments().length === 0) problems.push("no active experiments");
+  for (const route of FLYER_ROUTES) {
+    if (!getExperiment(route.experiment_id)) {
+      problems.push(`flyer route ${route.path}: unknown experiment ${route.experiment_id}`);
+    }
+  }
   return problems;
 }
