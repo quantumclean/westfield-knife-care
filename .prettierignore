@@ -1,0 +1,9 @@
+node_modules
+dist
+build
+coverage
+pnpm-lock.yaml
+.terraform
+*.tfstate
+*.tfstate.backup
+infrastructure/lambda/build

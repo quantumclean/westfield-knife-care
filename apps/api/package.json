@@ -1,0 +1,29 @@
+{
+  "name": "@wkc/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "HTTP API: orders, payments, waitlist, analytics events and operator tools.",
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=../../.env --watch --experimental-strip-types src/server.ts",
+    "build": "node build.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1139.0",
+    "@aws-sdk/client-ssm": "^3.1139.0",
+    "@aws-sdk/lib-dynamodb": "^3.1139.0",
+    "@wkc/shared": "workspace:*",
+    "hono": "^4.13.9",
+    "stripe": "^22.6.2",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@hono/node-server": "^2.1.1",
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.1"
+  }
+}

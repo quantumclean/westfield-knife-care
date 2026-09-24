@@ -1,0 +1,5 @@
+project        = "wkc"
+stage          = "prod"
+aws_region     = "us-east-1"
+domain_name    = "sharp.example.com"
+hosted_zone_id = "" # e.g. Z0123456789ABCDEFGHIJ when the zone is in Route53
