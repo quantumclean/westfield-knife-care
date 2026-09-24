@@ -12,7 +12,7 @@ packages/shared      Domain types, experiment registry, pricing, validation
 packages/ui          Reusable Preact components + design tokens
 infrastructure       Terraform: S3, CloudFront, Lambda, API Gateway, DynamoDB
 docs                 Experiment plan, pricing tests, analytics events, ops
-.github/workflows    test.yml (CI) and deploy.yml (apply + publish on main)
+.github/workflows    test.yml (CI), deploy-staging.yml (manual), deploy.yml (prod, on push to main)
 ```
 
 ## How experiments work
@@ -103,7 +103,15 @@ All routes are under `/api` (served on the site's own domain via CloudFront).
 ## Deployment (AWS, S3 + CloudFront + Lambda)
 
 The site is served from a subdomain such as `sharp.example.com`; the main
-domain and website are untouched. One-time setup:
+domain and website are untouched. Staging (`dev.sharp.example.com`) and
+production are fully separate stacks — separate bucket, table, function,
+distribution and SSM path — created by the same Terraform with a different
+`stage` variable, so exercising staging touches nothing in production.
+**Deploy and exercise staging before production.** The full sequence,
+including the manual walkthrough to run on staging (QR/vanity link →
+landing page → experiment assignment → booking → Stripe → confirmation →
+admin record → fulfillment → feedback) and the production go-live and
+verification steps, is `docs/go-live.md`. Summary:
 
 1. **Bootstrap state and CI credentials** (locally, with admin credentials):
 
@@ -116,18 +124,29 @@ domain and website are untouched. One-time setup:
    Note the `state_bucket` and `deploy_role_arn` outputs.
 
 2. **Configure GitHub**: secret `AWS_DEPLOY_ROLE_ARN`; variables
-   `AWS_REGION`, `TF_STATE_BUCKET`, `DOMAIN_NAME`, and optionally
-   `HOSTED_ZONE_ID` (Route53) and `VITE_GA4_MEASUREMENT_ID`. Create a
-   `production` environment (the deploy role trusts it).
+   `AWS_REGION`, `TF_STATE_BUCKET`, `DOMAIN_NAME`, `STAGING_DOMAIN_NAME`, and
+   optionally `HOSTED_ZONE_ID`, `STAGING_HOSTED_ZONE_ID` (Route53) and
+   `VITE_GA4_MEASUREMENT_ID`. Create `staging` and `production` GitHub
+   environments (the deploy role trusts both; `production` is the one worth
+   protecting with a required reviewer).
 
-3. **Certificate and DNS.** With `HOSTED_ZONE_ID` set, Terraform creates the
-   validation and alias records itself. With DNS elsewhere, run the first
-   apply with `-target=module.cloudfront.aws_acm_certificate.site`, read the
+3. **Deploy staging**: run the `Deploy staging` workflow (Actions tab →
+   Run workflow), or apply `infrastructure/terraform` by hand with
+   `environments/staging.tfvars.example` as a starting point. Work through
+   the staging checklist in `docs/go-live.md` with Stripe **test mode**
+   before touching production.
+
+4. **Certificate and DNS** (each stage, same steps). With `HOSTED_ZONE_ID`
+   set, Terraform creates the validation and alias records itself. With DNS
+   elsewhere, run the first apply with
+   `-target=module.cloudfront.aws_acm_certificate.site`, read the
    `acm_validation_records` output, create that CNAME, run the full apply,
-   then point `sharp` at the `cloudfront_domain_name` output with a CNAME.
+   then point the subdomain at the `cloudfront_domain_name` output with a
+   CNAME.
 
-4. **Secrets.** Terraform creates three SSM parameters with the value
-   `unset`. Set the real values once (they are never in Git or state):
+5. **Secrets** (each stage, its own SSM path). Terraform creates three SSM
+   parameters with the value `unset`. Set the real values once (they are
+   never in Git or state):
 
    ```sh
    aws ssm put-parameter --overwrite --type SecureString --name /wkc/prod/stripe_secret_key --value sk_live_...
@@ -135,23 +154,29 @@ domain and website are untouched. One-time setup:
    aws ssm put-parameter --overwrite --type SecureString --name /wkc/prod/admin_api_key --value "$(openssl rand -hex 24)"
    ```
 
-   Then create the Stripe webhook endpoint at the `stripe_webhook_url` output
-   for the events `checkout.session.completed`,
+   (Staging uses `/wkc/staging/...` and Stripe **test-mode** keys.) Then
+   create the Stripe webhook endpoint at the `stripe_webhook_url` output for
+   the events `checkout.session.completed`,
    `checkout.session.async_payment_succeeded`,
    `checkout.session.async_payment_failed`, `checkout.session.expired` and
    `charge.refunded`. Redeploy (or update the function configuration) so the
    Lambda cold-starts with the new values.
 
-5. **Push to `main`.** `deploy.yml` runs tests, builds, applies Terraform,
-   syncs `apps/web/dist` to S3 with immutable asset caching, invalidates
-   CloudFront and hits `/api/health`.
+6. **Deploy production**: once staging's full path is verified, push to
+   `main`. `deploy.yml` runs tests, builds, applies Terraform, syncs
+   `apps/web/dist` to S3 with immutable asset caching, invalidates
+   CloudFront and hits `/api/health`. Then work through the production
+   go-live checklist in `docs/go-live.md`: switch Stripe to live mode and
+   make one real, refunded transaction to verify the live webhook,
+   attribution and database records end to end.
 
-Manual equivalent of the workflow, from `infrastructure/terraform`:
+Manual equivalent of either workflow, from `infrastructure/terraform`:
 
 ```sh
 pnpm build
 cp backend.hcl.example backend.hcl && terraform init -backend-config=backend.hcl
-terraform apply -var domain_name=sharp.example.com
+cp environments/staging.tfvars.example staging.tfvars   # or environments/production.tfvars.example
+terraform apply -var-file=staging.tfvars
 aws s3 sync ../../apps/web/dist s3://$(terraform output -raw site_bucket) --delete
 aws cloudfront create-invalidation --distribution-id $(terraform output -raw cloudfront_distribution_id) --paths '/*'
 ```

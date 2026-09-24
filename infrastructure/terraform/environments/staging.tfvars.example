@@ -1,0 +1,10 @@
+project        = "wkc"
+stage          = "staging"
+aws_region     = "us-east-1"
+domain_name    = "dev.sharp.example.com"
+hosted_zone_id = "" # e.g. Z0123456789ABCDEFGHIJ when the zone is in Route53
+
+# Every var is prefixed with the stage, so a staging apply creates fully
+# separate resources from prod: wkc-staging-* bucket/table/function, its own
+# CloudFront distribution and certificate, its own SSM parameter path
+# (/wkc/staging/*). Nothing here can affect the production stack.
