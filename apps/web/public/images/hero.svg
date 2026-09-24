@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" role="img" aria-label="A freshly sharpened chef's knife on a wooden board with tomatoes and herbs">
+  <defs>
+    <linearGradient id="board" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c9a06c"/>
+      <stop offset="1" stop-color="#8e6437"/>
+    </linearGradient>
+    <linearGradient id="blade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f4f6f7"/>
+      <stop offset="0.55" stop-color="#c6ccd1"/>
+      <stop offset="1" stop-color="#e9edef"/>
+    </linearGradient>
+    <linearGradient id="handle" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2b2b2b"/>
+      <stop offset="1" stop-color="#0f0f0f"/>
+    </linearGradient>
+    <radialGradient id="tomato" cx="0.35" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#ff7a5c"/>
+      <stop offset="0.7" stop-color="#d63c25"/>
+      <stop offset="1" stop-color="#8f2213"/>
+    </radialGradient>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d3b2b"/>
+      <stop offset="1" stop-color="#0f2419"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="480" fill="url(#bg)"/>
+  <g transform="rotate(-6 320 300)">
+    <rect x="40" y="220" width="580" height="200" rx="22" fill="url(#board)"/>
+    <rect x="40" y="220" width="580" height="200" rx="22" fill="none" stroke="#5c3d1f" stroke-width="4"/>
+    <path d="M70 250 H590 M70 290 H590 M70 330 H590 M70 370 H590" stroke="#7a5230" stroke-opacity="0.35" stroke-width="2"/>
+  </g>
+  <g>
+    <circle cx="520" cy="300" r="44" fill="url(#tomato)"/>
+    <path d="M520 256 c-8 -14 -22 -14 -30 -6 c12 -2 20 4 30 6z M520 256 c8 -14 22 -14 30 -6 c-12 -2 -20 4 -30 6z" fill="#2f7a3a"/>
+    <circle cx="560" cy="360" r="24" fill="url(#tomato)"/>
+    <path d="M110 330 c20 -40 60 -50 90 -30 c-30 5 -50 20 -60 40z" fill="#2f7a3a"/>
+    <path d="M140 360 c30 -30 70 -25 90 0 c-30 -8 -55 0 -75 15z" fill="#3c9a48"/>
+  </g>
+  <g transform="rotate(-18 320 250)">
+    <path d="M90 270 L420 235 Q470 230 500 250 L500 270 L90 292 Z" fill="url(#blade)"/>
+    <path d="M90 270 L420 235 Q470 230 500 250" fill="none" stroke="#ffffff" stroke-opacity="0.9" stroke-width="2"/>
+    <path d="M120 290 L470 262" stroke="#9aa3a9" stroke-opacity="0.6" stroke-width="1.5"/>
+    <rect x="500" y="238" width="120" height="44" rx="14" fill="url(#handle)"/>
+    <circle cx="530" cy="260" r="4" fill="#8a8a8a"/>
+    <circle cx="590" cy="260" r="4" fill="#8a8a8a"/>
+  </g>
+</svg>

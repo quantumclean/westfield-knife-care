@@ -1,0 +1,29 @@
+{
+  "name": "westfield-knife-care",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Experiment-driven MVP for a local knife sharpening service in Westfield.",
+  "license": "MIT",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel --filter ./apps/* dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "prettier --check .",
+    "format": "prettier --write .",
+    "clean": "rm -rf apps/*/dist packages/*/dist infrastructure/lambda/build"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.9",
+    "typescript": "^5.9.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

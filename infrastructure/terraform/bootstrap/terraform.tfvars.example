@@ -1,0 +1,4 @@
+aws_region        = "us-east-1"
+project           = "wkc"
+github_repository = "quantumclean/westfield-knife-care"
+github_branch     = "main"
