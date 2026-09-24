@@ -65,4 +65,37 @@ describe("selectExperiment", () => {
     const chosen = selectExperiment({ visitorId: "v1" });
     expect(chosen).toBeDefined();
   });
+
+  it("honors a requested pin permanently, even paused or concluded (a flyer's printed price must never move)", () => {
+    const registry = [
+      make("experiment-a", 1),
+      { ...make("experiment-b", 0), status: "concluded" as const },
+    ];
+    const chosen = selectExperiment({ requestedId: "experiment-b", visitorId: "v1" }, registry);
+    expect(chosen?.id).toBe("experiment-b");
+  });
+
+  it("honors a stored pin permanently, even paused or concluded", () => {
+    const registry = [
+      make("experiment-a", 1),
+      { ...make("experiment-b", 0), status: "paused" as const },
+    ];
+    const chosen = selectExperiment({ storedId: "experiment-b", visitorId: "v1" }, registry);
+    expect(chosen?.id).toBe("experiment-b");
+  });
+
+  it("only weighs currently active experiments for a fresh, unpinned visitor", () => {
+    const registry = [
+      { ...make("experiment-a", 1), status: "concluded" as const },
+      make("experiment-b", 1),
+    ];
+    const chosen = selectExperiment({ visitorId: "v1" }, registry);
+    expect(chosen?.id).toBe("experiment-b");
+  });
+
+  it("still falls through to a fresh assignment when a pin is truly unknown", () => {
+    const registry = [make("experiment-a", 1)];
+    const chosen = selectExperiment({ requestedId: "experiment-ghost", visitorId: "v1" }, registry);
+    expect(chosen?.id).toBe("experiment-a");
+  });
 });

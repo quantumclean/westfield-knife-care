@@ -150,6 +150,10 @@ resource "aws_cloudfront_distribution" "site" {
     origin_request_policy_id = local.origin_all_viewer_except_host
   }
 
+  # SPA fallback. This is also what makes flyer vanity paths (/a, /b — see
+  # packages/shared/src/flyer-routes.ts) work with no extra routing: S3 404s
+  # on them (there is no a.html), CloudFront serves index.html instead, and
+  # the app reads the original path from the browser to pin the experiment.
   custom_error_response {
     error_code            = 404
     response_code         = 404

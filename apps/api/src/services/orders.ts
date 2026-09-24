@@ -1,5 +1,4 @@
 import {
-  activeExperiments,
   describePrice,
   formatCareDay,
   hoursBetween,
@@ -23,14 +22,15 @@ export interface CreateOrderResult {
 }
 
 /**
- * Pick the experiment an order is recorded under. The client's choice is
- * honoured when it is a live experiment; anything else falls back to the
- * default so stale flyer links keep working and are still attributable.
+ * Pick the experiment an order is recorded under. Any experiment that still
+ * exists in the registry is honoured, whether or not it is currently
+ * accepting fresh random traffic — a paused or concluded experiment must
+ * keep charging and labelling orders exactly as it always did, since a
+ * printed flyer or a returning customer's browser can still be pinned to
+ * it. Only a completely unknown id falls back to the default experiment.
  */
 export function resolveForOrder(experimentId: string): ResolvedExperiment {
-  const resolved = resolveExperimentOrDefault(experimentId);
-  const live = activeExperiments().some((e) => e.id === resolved.experiment.id);
-  return live ? resolved : resolveExperimentOrDefault(undefined);
+  return resolveExperimentOrDefault(experimentId);
 }
 
 export async function createOrder(deps: Deps, input: CreateOrderInput): Promise<CreateOrderResult> {

@@ -38,4 +38,14 @@ describe("experiment registry", () => {
     ]);
     expect(active.map((e) => e.id)).toEqual(["experiment-001", "experiment-002"]);
   });
+
+  it("resolves a paused or concluded experiment exactly like an active one (a pin must survive the experiment ending)", () => {
+    const registry = [{ ...EXPERIMENTS[1]!, status: "concluded" as const, weight: 0 }];
+    const resolved = resolveExperiment("experiment-002", registry);
+    expect(resolved?.price.bundle_price_cents).toBe(4900);
+    expect(resolved?.offer.headline).toBe("Your knives. Sharp tomorrow.");
+    expect(resolveExperimentOrDefault("experiment-002", registry).price.bundle_price_cents).toBe(
+      4900,
+    );
+  });
 });

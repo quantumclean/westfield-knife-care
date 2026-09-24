@@ -25,9 +25,12 @@ Pricing, copy, offers and acquisition source are variables, not constants.
   knives, "Never cook with a dull knife again.") and `experiment-002` ($49 /
   5 knives, "Your knives. Sharp tomorrow.").
 - The browser assigns each visitor deterministically (weighted hash of a
-  visitor id) unless the URL says otherwise: `?exp=experiment-002` pins an
-  experiment, `?src=flyer-v1-qr&ch=print` records the acquisition source and
-  channel. First touch is remembered per browser.
+  visitor id) unless the URL says otherwise. A flyer's QR code should point
+  at a vanity path (`/a`, `/b`, see `packages/shared/src/flyer-routes.ts`)
+  that permanently pins its experiment, price and source; `?exp=` and
+  `?src=&ch=` work the same way for placements with no fixed price to
+  protect. First touch is remembered per browser, and a pin (vanity path or
+  `?exp=`) is honored forever, even after the experiment concludes.
 - The API snapshots `experiment_id`, `offer_version` and `price_version` on
   every order, signup and event, recomputes the price from the registry, and
   never trusts a price sent by the client.

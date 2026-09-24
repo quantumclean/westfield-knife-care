@@ -46,26 +46,47 @@ price only differs inside the bundle ($9.75 vs $9.80); the test is really
 
 ## Traffic and links
 
-Each physical or digital placement gets its own link. The QR code and the
-short link must encode all three parameters:
+**Print always uses a vanity path, never a bare `?exp=` query string.** A
+flyer's QR code must keep showing the exact price printed on it, for as long
+as that flyer exists in someone's kitchen drawer — including after the
+experiment concludes. Query strings can be dropped by messaging apps,
+mistyped, or lost when a link is copied by hand; a path cannot.
+`packages/shared/src/flyer-routes.ts` is the registry:
 
 ```
-https://sharp.example.com/?exp=experiment-001&src=flyer-v1-qr&ch=print
-https://sharp.example.com/?exp=experiment-002&src=poster-gym-main&ch=print
+https://sharp.example.com/a   → experiment-001 ($39 / 4 knives), source "flyer-a", channel print
+https://sharp.example.com/b   → experiment-002 ($49 / 5 knives), source "flyer-b", channel print
+```
+
+Once a browser lands on `/a` or `/b`, that pin is permanent for that visitor
+(stored in `localStorage`) and is honored by the API forever, even if the
+experiment is later paused or concluded — see `selectExperiment` and
+`resolveForOrder`. A visitor is never shown a price that doesn't match the
+flyer they scanned.
+
+Digital and referral placements that have no fixed price to protect still
+use query parameters, same as before:
+
+```
 https://sharp.example.com/?src=nextdoor-post-1&ch=social        (random assignment)
 https://sharp.example.com/?src=friend&ch=referral               (random assignment)
+https://sharp.example.com/?exp=experiment-002&src=ig-story-3&ch=social  (pin a specific test)
 ```
 
 Rules:
 
-- `exp` pins a visitor to an experiment. Use it on print so each flyer
-  version is a clean cell. Leave it off online so the site splits traffic.
-- `src` is unique per placement (`flyer-v1-qr`, `flyer-v2-qr`, `poster-coop`,
-  `ig-story-3`). Lowercase, hyphens.
+- `exp` pins a visitor to an experiment, same guarantee as a vanity path.
+  Use a vanity path instead whenever the placement shows a fixed price.
+- `src` is unique per placement (`flyer-a`, `flyer-b`, `poster-coop`,
+  `ig-story-3`). Lowercase, hyphens. Add `?src=` on top of a vanity path to
+  distinguish two print batches of the same flyer without changing price.
 - `ch` is one of `print`, `social`, `referral`, `search`, `direct`,
   `partner`, `other`. If omitted it is inferred from `src`.
-- Attribution is first-touch per browser. A repeat visit from a different
-  link does **not** overwrite it unless the new link carries `src`.
+- Attribution is first-touch per browser. A repeat visit does **not**
+  overwrite it unless the new visit carries `src`, `ch`, or a vanity path.
+- Adding a third flyer variant means adding a third vanity path
+  (`/c`) in `flyer-routes.ts`, not reusing `/a` or `/b` for a different
+  price.
 
 ## Sample size
 

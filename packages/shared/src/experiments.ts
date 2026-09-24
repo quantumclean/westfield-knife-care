@@ -87,17 +87,31 @@ export function getPriceVersion(id: string): PriceVersion | undefined {
   return PRICE_VERSIONS.find((p) => p.id === id);
 }
 
-export function getExperiment(id: string): Experiment | undefined {
-  return EXPERIMENTS.find((e) => e.id === id);
+export function getExperiment(
+  id: string,
+  experiments: readonly Experiment[] = EXPERIMENTS,
+): Experiment | undefined {
+  return experiments.find((e) => e.id === id);
 }
 
 export function activeExperiments(experiments: readonly Experiment[] = EXPERIMENTS): Experiment[] {
   return experiments.filter((e) => e.status === "active" && e.weight > 0);
 }
 
-/** Resolve an experiment id to its offer and price. Returns undefined for unknown ids. */
-export function resolveExperiment(id: string): ResolvedExperiment | undefined {
-  const experiment = getExperiment(id);
+/**
+ * Resolve an experiment id to its offer and price. Returns undefined for
+ * unknown ids. Deliberately ignores `status` and `weight`: an experiment
+ * that is paused or concluded still resolves to the exact copy and price it
+ * always had, because a pin to it (a flyer QR, a stored browser assignment)
+ * must keep working for as long as the id exists. `status`/`weight` only
+ * gate whether an experiment receives *fresh* random assignment; see
+ * `activeExperiments` and `assignExperiment`.
+ */
+export function resolveExperiment(
+  id: string,
+  experiments: readonly Experiment[] = EXPERIMENTS,
+): ResolvedExperiment | undefined {
+  const experiment = getExperiment(id, experiments);
   if (!experiment) return undefined;
   const offer = getOfferVersion(experiment.offer_version);
   const price = getPriceVersion(experiment.price_version);
@@ -106,10 +120,13 @@ export function resolveExperiment(id: string): ResolvedExperiment | undefined {
 }
 
 /** Like resolveExperiment but falls back to DEFAULT_EXPERIMENT_ID. */
-export function resolveExperimentOrDefault(id: string | null | undefined): ResolvedExperiment {
-  const resolved = id ? resolveExperiment(id) : undefined;
+export function resolveExperimentOrDefault(
+  id: string | null | undefined,
+  experiments: readonly Experiment[] = EXPERIMENTS,
+): ResolvedExperiment {
+  const resolved = id ? resolveExperiment(id, experiments) : undefined;
   if (resolved) return resolved;
-  const fallback = resolveExperiment(DEFAULT_EXPERIMENT_ID);
+  const fallback = resolveExperiment(DEFAULT_EXPERIMENT_ID, experiments);
   if (!fallback) {
     throw new Error(`DEFAULT_EXPERIMENT_ID ${DEFAULT_EXPERIMENT_ID} is not a valid experiment`);
   }

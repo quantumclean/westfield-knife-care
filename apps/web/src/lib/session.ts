@@ -1,6 +1,7 @@
 import {
   deriveAttribution,
   resolveExperimentOrDefault,
+  resolveFlyerRoute,
   selectExperiment,
   type Attribution,
   type ResolvedExperiment,
@@ -50,20 +51,28 @@ export function loadSession(
   referrer = document.referrer,
 ): Session {
   const params = new URLSearchParams(location.search);
+  // A flyer's vanity path (e.g. /a) is a pin, same intent as ?exp= but
+  // robust to a query string getting dropped when the link is shared.
+  // Static hosting falls back to this same bundle for any unknown path
+  // (see infrastructure/cloudfront and the Vite dev server's SPA fallback),
+  // so reading the path here is all that's needed to detect it.
+  const flyerRoute = resolveFlyerRoute(location.pathname);
 
   const visitor_id = read(KEYS.visitor) ?? newVisitorId();
   write(KEYS.visitor, visitor_id);
 
   const chosen = selectExperiment({
-    requestedId: params.get("exp"),
+    requestedId: params.get("exp") ?? flyerRoute?.experiment_id,
     storedId: read(KEYS.experiment),
     visitorId: visitor_id,
   });
   const experiment = resolveExperimentOrDefault(chosen?.id);
   write(KEYS.experiment, experiment.experiment.id);
 
-  // First touch wins unless the URL carries explicit campaign parameters.
-  const explicit = params.has("src") || params.has("utm_source") || params.has("ch");
+  // First touch wins unless this load carries an explicit campaign signal:
+  // query parameters, or a flyer vanity path.
+  const explicit =
+    params.has("src") || params.has("utm_source") || params.has("ch") || Boolean(flyerRoute);
   const stored = read(KEYS.attribution);
   let attribution: Attribution | undefined;
   if (!explicit && stored) {
@@ -74,8 +83,8 @@ export function loadSession(
     }
   }
   attribution ??= deriveAttribution({
-    src: params.get("src"),
-    ch: params.get("ch"),
+    src: params.get("src") ?? flyerRoute?.source,
+    ch: params.get("ch") ?? flyerRoute?.acquisition_channel,
     utm_source: params.get("utm_source"),
     utm_medium: params.get("utm_medium"),
     referrer,

@@ -1,4 +1,4 @@
-import { activeExperiments, getExperiment } from "./experiments.ts";
+import { activeExperiments, getExperiment, EXPERIMENTS } from "./experiments.ts";
 import type { Experiment } from "./types.ts";
 
 /**
@@ -35,7 +35,7 @@ export function assignExperiment(
 }
 
 export interface ExperimentSelectionInput {
-  /** Explicit override, usually from `?exp=` on a flyer QR link. */
+  /** Explicit pin: a flyer QR, a vanity route (`/a`, `/b`), or `?exp=`. */
   requestedId?: string | null;
   /** Previously stored assignment for this browser. */
   storedId?: string | null;
@@ -44,20 +44,26 @@ export interface ExperimentSelectionInput {
 
 /**
  * Decide which experiment a visitor sees, in priority order:
- * 1. an explicit, currently active experiment requested in the URL
- * 2. the experiment already stored for this browser, if still active
- * 3. a fresh weighted assignment
+ * 1. an explicitly requested experiment, honored for as long as it exists
+ *    in the registry — even after it is paused or concluded. A flyer's
+ *    printed price must never change under the reader after the fact.
+ * 2. the experiment already stored for this browser, honored the same way,
+ *    so a returning visitor's price never moves mid-experiment either.
+ * 3. a fresh weighted assignment among *currently active* experiments, for
+ *    a visitor who arrived with no pin at all (organic/direct traffic).
+ *
+ * `status` and `weight` therefore only control who gets randomly assigned
+ * into an experiment next, never whether an existing pin keeps resolving.
  */
-export function selectExperiment(input: ExperimentSelectionInput): Experiment | undefined {
-  const active = activeExperiments();
-  const isActive = (id: string | null | undefined): Experiment | undefined => {
-    if (!id) return undefined;
-    const experiment = getExperiment(id);
-    return experiment && active.includes(experiment) ? experiment : undefined;
-  };
+export function selectExperiment(
+  input: ExperimentSelectionInput,
+  experiments: readonly Experiment[] = EXPERIMENTS,
+): Experiment | undefined {
+  const pinned = (id: string | null | undefined): Experiment | undefined =>
+    id ? getExperiment(id, experiments) : undefined;
   return (
-    isActive(input.requestedId) ??
-    isActive(input.storedId) ??
-    assignExperiment(input.visitorId, active)
+    pinned(input.requestedId) ??
+    pinned(input.storedId) ??
+    assignExperiment(input.visitorId, activeExperiments(experiments))
   );
 }
