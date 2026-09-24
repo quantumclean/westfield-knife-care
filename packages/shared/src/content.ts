@@ -7,7 +7,7 @@ export const BRAND = {
   short_name: "Westfield",
   tagline: "Local service. No shipping. Real people.",
   service_area: "Westfield",
-  support_email: "hello@sharp.example.com",
+  support_email: "hello@sharp.usabiology.com",
 } as const;
 
 export const HOW_IT_WORKS = [

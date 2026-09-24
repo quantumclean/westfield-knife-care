@@ -177,7 +177,7 @@ export function renderFlyer(flyer, { heroSvg, qrSvg, baseUrl }) {
           <div class="brand-name">Westfield<span>Knife Care</span></div>
           ${logoMark()}
         </div>
-        <p class="tagline">westfieldknifecare.example &bull; hello@sharp.example.com</p>
+        <p class="tagline">hello@${baseUrl.replace(/^https?:\/\//, "")}</p>
       </div>
     </div>
   </div>
