@@ -1,0 +1,13 @@
+{
+  "name": "@wkc/flyers",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Source for the two print flyers (A/B pricing test) and the script that regenerates their QR codes and PDFs. Not part of the pnpm workspace: has no runtime relationship to the app.",
+  "type": "module",
+  "scripts": {
+    "generate": "node generate.mjs"
+  },
+  "devDependencies": {
+    "qrcode": "^1.5.4"
+  }
+}
