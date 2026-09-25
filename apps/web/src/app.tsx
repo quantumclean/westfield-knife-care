@@ -9,6 +9,7 @@ import { Footer } from "./sections/Footer.tsx";
 import { Header } from "./sections/Header.tsx";
 import { Hero } from "./sections/Hero.tsx";
 import { HowItWorks } from "./sections/HowItWorks.tsx";
+import { LaunchVideo } from "./sections/LaunchVideo.tsx";
 import { Pricing } from "./sections/Pricing.tsx";
 
 type Dialog = "none" | "book" | "pilot";
@@ -65,6 +66,7 @@ export function App({ session }: { session: Session }) {
           onBook={() => openBooking("hero")}
           onPilot={() => openPilot("hero")}
         />
+        <LaunchVideo />
         <HowItWorks />
         <Pricing
           experiment={experiment}

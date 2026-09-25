@@ -12,6 +12,7 @@ packages/shared      Domain types, experiment registry, pricing, validation
 packages/ui          Reusable Preact components + design tokens
 infrastructure       Terraform: S3, CloudFront, Lambda, API Gateway, DynamoDB
 docs                 Experiment plan, pricing tests, analytics events, ops
+marketing            Print flyers and the homepage launch video (source + render scripts)
 .github/workflows    test.yml (CI), deploy-staging.yml (manual), deploy.yml (prod, on push to main)
 ```
 

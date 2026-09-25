@@ -28,18 +28,20 @@ Events expire after 180 days (DynamoDB TTL). Orders and signups do not.
 
 ## Catalog
 
-| event                | when                                                         | props                                                                    | funnel step |
-| -------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------ | ----------- |
-| `page_view`          | page load of `/` or `/thanks`                                |                                                                          | 1           |
-| `cta_click`          | any Sharpen / Pilot button                                   | `cta`: sharpen \| pilot; `location`: hero \| nav \| pricing \| deep-link | 2           |
-| `booking_opened`     | booking dialog shown                                         | `location`                                                               | 3           |
-| `booking_submitted`  | booking form passed client validation                        | `knives`, `care_day`, `total_cents`                                      | 4           |
-| `checkout_started`   | order created, redirecting to Stripe                         | `order_id`, `total_cents`                                                | 5           |
-| `checkout_completed` | thank-you page confirms `payment_status = paid` (once/order) | `order_id`, `total_cents`                                                | 6           |
-| `pilot_opened`       | waitlist dialog shown                                        | `location`                                                               |             |
-| `pilot_submitted`    | waitlist entry saved                                         | `cadence`, `interest`                                                    |             |
-| `faq_opened`         | an FAQ item expanded                                         | `question` (FAQ id)                                                      |             |
-| `form_error`         | client validation failed                                     | `form`: booking \| pilot; `fields`                                       |             |
+| event                | when                                                                                   | props                                                                    | funnel step |
+| -------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ----------- |
+| `page_view`          | page load of `/` or `/thanks`                                                          |                                                                          | 1           |
+| `cta_click`          | any Sharpen / Pilot button                                                             | `cta`: sharpen \| pilot; `location`: hero \| nav \| pricing \| deep-link | 2           |
+| `booking_opened`     | booking dialog shown                                                                   | `location`                                                               | 3           |
+| `booking_submitted`  | booking form passed client validation                                                  | `knives`, `care_day`, `total_cents`                                      | 4           |
+| `checkout_started`   | order created, redirecting to Stripe                                                   | `order_id`, `total_cents`                                                | 5           |
+| `checkout_completed` | thank-you page confirms `payment_status = paid` (once/order)                           | `order_id`, `total_cents`                                                | 6           |
+| `pilot_opened`       | waitlist dialog shown                                                                  | `location`                                                               |             |
+| `pilot_submitted`    | waitlist entry saved                                                                   | `cadence`, `interest`                                                    |             |
+| `faq_opened`         | an FAQ item expanded                                                                   | `question` (FAQ id)                                                      |             |
+| `form_error`         | client validation failed                                                               | `form`: booking \| pilot; `fields`                                       |             |
+| `video_view`         | homepage launch video starts (autoplay when half on screen, or a click), once per page | `trigger`: autoplay \| click; `cut`: landscape \| square                 |             |
+| `video_unmute`       | visitor turns the video's sound on, once per page                                      | `cut`; `at_seconds`                                                      |             |
 
 `checkout_completed` is the client-side echo; the authoritative purchase
 record is the order's `payment_status`, set by the Stripe webhook. The
