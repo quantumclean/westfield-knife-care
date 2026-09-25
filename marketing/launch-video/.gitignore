@@ -1,5 +1,4 @@
 node_modules/
 out/
-composition/generated/
 audio/soundtrack.wav
 __pycache__/

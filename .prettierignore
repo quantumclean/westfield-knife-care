@@ -8,5 +8,4 @@ pnpm-lock.yaml
 *.tfstate.backup
 infrastructure/lambda/build
 marketing/launch-video/out
-marketing/launch-video/composition/generated
 marketing/flyers/flyer-*.html

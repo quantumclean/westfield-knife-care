@@ -3,35 +3,60 @@ import { Section } from "@wkc/ui";
 import { EVENTS, track } from "../lib/analytics.ts";
 
 /**
- * The 50-second launch video (source: marketing/launch-video). It is
- * experiment-neutral — no price, headline or turnaround time — so both A/B
- * arms see the same thing and it can't confound the test.
+ * The 23-second launch film (source: marketing/launch-video): "Dull.",
+ * "Sharp.", a pickup line, a return line, logo. The return line is a
+ * turnaround promise, so each offer gets the cut that repeats its own
+ * promise and nothing else; an offer without a cut shows no video rather
+ * than one that could contradict it or confound the A/B test.
  *
  * Files are versioned because the deploy caches non-HTML assets as
  * immutable; a re-render must ship under a new VERSION.
  */
 const VERSION = "v1";
-const file = (cut: "landscape" | "square", suffix: string) =>
-  `/video/launch-${cut}-${VERSION}${suffix}`;
+type Cut = "a" | "b";
+type Format = "landscape" | "square";
 
-const TRANSCRIPT = [
-  "When did you last sharpen your knives?",
-  "Dull knives crush. They slip. Cooking feels like work.",
-  "Westfield Knife Care. Sharpening, handled. Local pickup, pro sharpening, fast return.",
-  "1. Book in about a minute. 2. We pick up at your door. 3. Professionally sharpened, by hand or precision equipment. 4. Back at your door. Sharp.",
-  "The details, handled: one local route, no shipping. Pickup and return included. Secure checkout through Stripe. Full refund if we can't make your pickup.",
-  "Coming soon: Always Sharp. Swap a dull knife for a sharp one, on repeat.",
-  "Sharp knives. Zero hassle. Book your pickup at sharp.usabiology.com.",
-];
+const VIDEO_BY_OFFER: Record<string, Cut> = {
+  "offer-001": "a", // "Back at your door within 48 hours"
+  "offer-002": "b", // "Back at your door the next day"
+};
+
+const file = (cut: Cut, format: Format, suffix: string) =>
+  `/video/launch-${cut}-${format}-${VERSION}${suffix}`;
+
+const LINES: Record<Cut, { pickup: string; back: string; backScene: string }> = {
+  a: {
+    pickup: "Picked up at home.",
+    back: "Back within 48 hours.",
+    backScene: "The bag is back on the doormat.",
+  },
+  b: {
+    pickup: "Picked up today.",
+    back: "Back tomorrow.",
+    backScene: "The next day, the bag is back on the doormat.",
+  },
+};
+
+function transcript(cut: Cut): string[] {
+  const l = LINES[cut];
+  return [
+    "Dull. A dull knife drags across a tomato and crushes it.",
+    "Sharp. A sharp knife goes through it in one stroke; clean slices fan out.",
+    `${l.pickup} A bag of knives is picked up from a front doorstep.`,
+    `${l.back} ${l.backScene}`,
+    "Westfield Knife Care. Sharpen My Knives. sharp.usabiology.com",
+  ];
+}
 
 function prefersReducedMotion(): boolean {
   return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-export function LaunchVideo() {
+export function LaunchVideo({ offerId }: { offerId: string }) {
+  const cut = VIDEO_BY_OFFER[offerId];
   const ref = useRef<HTMLVideoElement>(null);
   const reduced = useMemo(prefersReducedMotion, []);
-  const cut = useMemo<"landscape" | "square">(
+  const format = useMemo<Format>(
     () =>
       typeof matchMedia === "function" && matchMedia("(max-width: 640px)").matches
         ? "square"
@@ -47,7 +72,7 @@ export function LaunchVideo() {
   const markViewed = (trigger: string) => {
     if (viewed.current) return;
     viewed.current = true;
-    track(EVENTS.video_view, { trigger, cut });
+    track(EVENTS.video_view, { trigger, cut, format });
   };
 
   // Autoplay (muted) only while at least half the video is on screen.
@@ -70,7 +95,9 @@ export function LaunchVideo() {
     io.observe(video);
     return () => io.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reduced, userPaused]);
+  }, [reduced, userPaused, cut]);
+
+  if (!cut) return null;
 
   const togglePlay = () => {
     const video = ref.current;
@@ -97,28 +124,28 @@ export function LaunchVideo() {
       }
       if (!unmuted.current) {
         unmuted.current = true;
-        track(EVENTS.video_unmute, { cut, at_seconds: Math.round(video.currentTime) });
+        track(EVENTS.video_unmute, { cut, format, at_seconds: Math.round(video.currentTime) });
       }
     }
   };
 
   return (
-    <Section id="video" title="Sharpening, handled." subtitle="The whole service in 50 seconds.">
-      <div class="video-frame" style={{ aspectRatio: cut === "square" ? "1 / 1" : "16 / 9" }}>
+    <Section id="video" title="Sharpening, handled.">
+      <div class="video-frame" style={{ aspectRatio: format === "square" ? "1 / 1" : "16 / 9" }}>
         <video
           ref={ref}
           muted={muted}
           loop
           playsInline
           preload="metadata"
-          poster={file(cut, "-poster.jpg")}
-          aria-label="Westfield Knife Care: how the service works, in 50 seconds"
+          poster={file(cut, format, "-poster.jpg")}
+          aria-label={`Westfield Knife Care: dull, sharp. ${LINES[cut].pickup} ${LINES[cut].back}`}
           aria-describedby="video-transcript"
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
         >
-          <source src={file(cut, ".webm")} type="video/webm" />
-          <source src={file(cut, ".mp4")} type="video/mp4" />
+          <source src={file(cut, format, ".webm")} type="video/webm" />
+          <source src={file(cut, format, ".mp4")} type="video/mp4" />
         </video>
         {!playing && (
           <button type="button" class="video-play" onClick={togglePlay} aria-label="Play video">
@@ -136,7 +163,7 @@ export function LaunchVideo() {
       </div>
       <details class="video-transcript" id="video-transcript">
         <summary>What's in the video</summary>
-        {TRANSCRIPT.map((line) => (
+        {transcript(cut).map((line) => (
           <p key={line}>{line}</p>
         ))}
       </details>

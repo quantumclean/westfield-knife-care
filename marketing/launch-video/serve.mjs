@@ -1,12 +1,11 @@
 // Tiny static server for the composition. Everything it serves is local
-// (the composition, node_modules, cues.json, assets/), so a render never
+// (the composition, node_modules, cues.json), so a render never
 // touches the network. Run directly to preview in a browser:
-//   node serve.mjs   ->  http://127.0.0.1:4173/composition/?mode=landscape
+//   node serve.mjs   ->  http://127.0.0.1:4173/composition/?mode=landscape&cut=b
 import http from "node:http";
-import { readFile, mkdir, writeFile, stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import QRCode from "qrcode";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const TYPES = {
@@ -24,22 +23,7 @@ const TYPES = {
   ".webp": "image/webp",
 };
 
-/** Build files the composition expects but that depend on config. */
-export async function prepare() {
-  const cues = JSON.parse(await readFile(path.join(root, "cues.json"), "utf8"));
-  const out = path.join(root, "composition", "generated");
-  await mkdir(out, { recursive: true });
-  const qr = await QRCode.toString(`https://${cues.url}`, {
-    type: "svg",
-    margin: 0,
-    errorCorrectionLevel: "M",
-    color: { dark: "#111814", light: "#ffffff" },
-  });
-  await writeFile(path.join(out, "qr.svg"), qr);
-}
-
 export async function startServer(port = 4173) {
-  await prepare();
   const server = http.createServer(async (req, res) => {
     try {
       let p = decodeURIComponent(new URL(req.url, "http://x").pathname);
@@ -64,6 +48,8 @@ export async function startServer(port = 4173) {
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const port = Number(process.env.PORT ?? 4173);
   await startServer(port);
-  console.log(`http://127.0.0.1:${port}/composition/?mode=landscape`);
-  console.log(`http://127.0.0.1:${port}/composition/?mode=square`);
+  for (const cut of ["a", "b"]) {
+    console.log(`http://127.0.0.1:${port}/composition/?mode=landscape&cut=${cut}`);
+    console.log(`http://127.0.0.1:${port}/composition/?mode=square&cut=${cut}`);
+  }
 }

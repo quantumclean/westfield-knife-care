@@ -66,7 +66,7 @@ export function App({ session }: { session: Session }) {
           onBook={() => openBooking("hero")}
           onPilot={() => openPilot("hero")}
         />
-        <LaunchVideo />
+        <LaunchVideo offerId={experiment.offer.id} />
         <HowItWorks />
         <Pricing
           experiment={experiment}

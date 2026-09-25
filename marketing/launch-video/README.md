@@ -1,21 +1,34 @@
-# Launch video
+# Launch film
 
-The 50-second motion-graphics video on the homepage (`apps/web/src/sections/LaunchVideo.tsx`),
-built as code so it can be re-cut when the service changes. See
-`STORYBOARD.md` for the script and the rules it follows — most importantly,
-it never shows a price, an offer headline or a turnaround time, because the
-homepage A/B tests those and both arms must see an identical video.
+The 23-second film on the homepage (`apps/web/src/sections/LaunchVideo.tsx`),
+built as code so it can be re-cut when the service changes. Four beats and
+an end card, almost no copy:
 
-| Path                  | What it is                                                                              |
-| --------------------- | --------------------------------------------------------------------------------------- |
-| `cues.json`           | Single source of timing: scenes and every sound effect, at 120 BPM                      |
-| `composition/`        | HTML + GSAP composition; `scenes.js` builds a paused timeline seeked frame by frame     |
-| `composition/art.js`  | Hand-built vector art: knife, tomato and slices, board, whetstone, door, van, route map |
-| `audio/soundtrack.py` | Original music and sound design, synthesized with numpy/scipy, normalized to -16 LUFS   |
-| `render.mjs`          | Frame capture (Playwright) → ffmpeg → MP4 + WebM + poster, 16:9 and 1:1 cuts            |
-| `serve.mjs`           | Local static server; `node serve.mjs` to scrub the composition in a browser             |
-| `assets/photos.json`  | Chosen stock photos for an optional photographic cut, with licenses                     |
-| `fetch-photos.mjs`    | Downloads those photos; the composition swaps them in wherever a file exists            |
+> **Dull.** · **Sharp.** · **Picked up today.** · **Back tomorrow.** · logo + CTA
+
+See `STORYBOARD.md` for the shot list and the rules it follows. The most
+important one: the return line is a turnaround promise, and the homepage
+A/B tests turnaround, so there is one **cut per offer**, each repeating
+only that offer's own promise. Visuals are identical across cuts.
+
+| Cut | Offer       | Pickup line        | Return line           | Offer's own promise                 |
+| --- | ----------- | ------------------ | --------------------- | ----------------------------------- |
+| `a` | `offer-001` | Picked up at home. | Back within 48 hours. | "Back at your door within 48 hours" |
+| `b` | `offer-002` | Picked up today.   | Back tomorrow.        | "Back at your door the next day"    |
+
+The homepage picks the cut from the visitor's assigned offer and shows no
+video for an offer that has no cut. Adding an offer with a different
+promise means adding a cut to `cues.json`, rendering it, and adding it to
+`VIDEO_BY_OFFER` in `LaunchVideo.tsx`.
+
+| Path                  | What it is                                                                               |
+| --------------------- | ---------------------------------------------------------------------------------------- |
+| `cues.json`           | Single source of timing and copy: cuts, scenes, harmony changes, every sound effect      |
+| `composition/`        | HTML + GSAP (SplitText, DrawSVG) composition; `scenes.js` builds one paused timeline     |
+| `composition/art.js`  | Hand-built vector art: knife (dull and sharp), tomato and slices, board, doorway, bag    |
+| `audio/soundtrack.py` | Original score and sound design, synthesized with numpy/scipy, normalized to -16 LUFS    |
+| `render.mjs`          | Frame capture (Playwright) → ffmpeg → MP4 + WebM + poster, per cut, 16:9 and 1:1 formats |
+| `serve.mjs`           | Local static server; `node serve.mjs` to scrub the composition in a browser              |
 
 ## Re-rendering
 
@@ -25,35 +38,27 @@ libx264, libvpx-vp9 and libopus.
 ```sh
 cd marketing/launch-video
 npm install
-npx playwright install chromium        # once, if Playwright has no browser yet
-npm run audio                          # -> audio/soundtrack.wav
-node render.mjs --stills 9.5,16.8      # quick PNG checks in out/stills/
-node render.mjs --publish              # both cuts -> out/, then copied to apps/web/public/video/
+npx playwright install chromium          # once, if Playwright has no browser yet
+npm run audio                            # -> audio/soundtrack.wav
+node render.mjs --cut b --stills 5.9,14.5  # quick PNG checks in out/stills/
+node render.mjs --publish                # every cut x format -> out/, copied to apps/web/public/video/
 ```
 
-A full render of both cuts takes roughly half an hour on a 4-core machine
-with software rendering. Output is identical on every run: frames come from
-seeking the timeline to exact times, never from wall-clock playback.
+Output is `launch-{cut}-{format}-v1.{mp4,webm}` plus `-poster.jpg` (the
+frame at `cues.json` `poster`). Output is identical on every run: frames
+come from seeking the timeline to exact times, never from wall-clock
+playback. The soundtrack is shared by all cuts; only on-screen words differ.
 
 **Bump `VERSION`** in both `render.mjs` and `LaunchVideo.tsx` before
 publishing a new render. The deploy caches everything but HTML as
 immutable for a year, so reusing a filename would leave returning visitors
 on the old video.
 
-## Photographic cut
-
-The shipped video uses vector art throughout. `assets/photos.json` lists
-real photos for the pickup, sharpening and slicing scenes. To use them, run
-`node fetch-photos.mjs` (Unsplash downloads automatically; the Pixabay
-whetstone photo has to be saved by hand as `assets/photos/sharpen.jpg`),
-look at each one, then re-render with a new `VERSION`. Any scene without a
-photo file keeps its vector art. Those hosts were blocked by the network
-policy of the environment this was built in, which is why the first cut is
-all vector.
-
 ## Changing the words
 
-All copy lives in `composition/scenes.js`. Keep claims to what the site
-already states (`packages/shared/src/content.ts`, the FAQ), keep it
-experiment-neutral, and keep type sizes large — the 1:1 cut is watched at
+The pickup and return lines live in `cues.json` under `cuts`; the beat
+words and end card are in `composition/scenes.js`. Keep claims to what the
+site already states for that offer (`packages/shared/src/experiments.ts`,
+`content.ts`, the FAQ), and update the per-cut transcript in
+`LaunchVideo.tsx` to match. Keep type large: the 1:1 format is watched at
 about 350px wide.

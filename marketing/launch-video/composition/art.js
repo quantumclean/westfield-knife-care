@@ -148,179 +148,107 @@ export function board(p) {
 </svg>`;
 }
 
-export function whetstone(p) {
-  return `<svg class="stone-svg" viewBox="0 0 1000 420" xmlns="http://www.w3.org/2000/svg">
+/** A front door at night or in the morning; the scene crossfades the two. */
+export function doorway(p, mood) {
+  const night = mood === "night";
+  const c = night
+    ? {
+        wall0: "#121814",
+        wall1: "#0b0f0d",
+        trim: "#1d2521",
+        door0: "#1b3d2c",
+        door1: "#11281c",
+        panel: "#0c1d14",
+        floor: "#151a17",
+        step: "#1b211d",
+        mat: "#2b2119",
+      }
+    : {
+        wall0: "#4a3d2c",
+        wall1: "#2e2619",
+        trim: "#e8dfcf",
+        door0: "#347554",
+        door1: "#245a3d",
+        panel: "#1c4630",
+        floor: "#7e715e",
+        step: "#9a8c77",
+        mat: "#6b4a2e",
+      };
+  return `<svg class="doorway-svg" viewBox="0 0 900 1000" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="${p}-top" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#eb9a63"/><stop offset="1" stop-color="#c7672f"/>
+    <linearGradient id="${p}-wall" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="${c.wall0}"/><stop offset="1" stop-color="${c.wall1}"/>
     </linearGradient>
-    <linearGradient id="${p}-front" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#b35a2b"/><stop offset="1" stop-color="#8c421c"/>
+    <linearGradient id="${p}-door" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="${c.door0}"/><stop offset="1" stop-color="${c.door1}"/>
     </linearGradient>
-    <linearGradient id="${p}-base" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#3a3f43"/><stop offset="1" stop-color="#1c1f22"/>
-    </linearGradient>
-    <radialGradient id="${p}-shadow" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="#000000" stop-opacity="0.5"/><stop offset="1" stop-color="#000000" stop-opacity="0"/>
-    </radialGradient>
-  </defs>
-  <ellipse cx="500" cy="372" rx="480" ry="40" fill="url(#${p}-shadow)"/>
-  <path d="M90 290 L910 290 L950 352 L50 352 Z" fill="url(#${p}-base)"/>
-  <path d="M90 290 L910 290" stroke="#5a6065" stroke-width="3"/>
-  <path d="M150 180 L850 180 L892 252 L108 252 Z" fill="url(#${p}-top)"/>
-  <path d="M108 252 L892 252 L892 300 L108 300 Z" fill="url(#${p}-front)"/>
-  <ellipse cx="380" cy="214" rx="120" ry="14" fill="#ffffff" opacity="0.16"/>
-  <ellipse cx="640" cy="222" rx="80" ry="9" fill="#ffffff" opacity="0.12"/>
-  <path d="M230 228 C 400 212 560 236 760 214" stroke="#f7c29b" stroke-opacity="0.45" stroke-width="5" fill="none"/>
-  <g class="sparks"></g>
-</svg>`;
-}
-
-export function doorScene(p) {
-  const siding = Array.from({ length: 18 }, (_, i) => 30 + i * 46)
-    .map((y) => `<path d="M0 ${y} H1000" stroke="#e1d5bd" stroke-width="3"/>`)
-    .join("");
-  return `<svg class="door-svg" viewBox="0 0 1000 900" xmlns="http://www.w3.org/2000/svg">
-  <defs>
     <linearGradient id="${p}-win" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffefbf"/><stop offset="1" stop-color="#f5b75a"/>
+      ${night ? '<stop offset="0" stop-color="#ffe2a0"/><stop offset="1" stop-color="#f0a646"/>' : '<stop offset="0" stop-color="#dcebf0"/><stop offset="1" stop-color="#a8c4cf"/>'}
     </linearGradient>
-    <radialGradient id="${p}-glow" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="#ffd98a" stop-opacity="0.55"/><stop offset="1" stop-color="#ffd98a" stop-opacity="0"/>
+    <radialGradient id="${p}-lamp" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffd98a" stop-opacity="0.5"/><stop offset="1" stop-color="#ffd98a" stop-opacity="0"/>
     </radialGradient>
     <radialGradient id="${p}-knob" cx="0.35" cy="0.35" r="0.7">
-      <stop offset="0" stop-color="#fff0b8"/><stop offset="1" stop-color="#bf8a25"/>
+      <stop offset="0" stop-color="#fff0b8"/><stop offset="1" stop-color="#b98422"/>
     </radialGradient>
-    <linearGradient id="${p}-door" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2a6444"/><stop offset="1" stop-color="#1a4230"/>
+    <linearGradient id="${p}-sun" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffd7a0" stop-opacity="0.34"/><stop offset="1" stop-color="#ffd7a0" stop-opacity="0"/>
     </linearGradient>
   </defs>
-  <rect width="1000" height="900" fill="#efe5d3"/>
-  ${siding}
-  <circle cx="262" cy="310" r="230" fill="url(#${p}-glow)"/>
-  <rect x="318" y="160" width="364" height="578" rx="10" fill="#fbfaf6"/>
-  <rect x="345" y="188" width="310" height="552" rx="6" fill="url(#${p}-door)"/>
-  <rect x="382" y="226" width="236" height="156" rx="10" fill="url(#${p}-win)"/>
-  <path d="M500 226 V382 M382 304 H618" stroke="#1d4631" stroke-width="10"/>
-  <rect x="382" y="422" width="100" height="264" rx="8" fill="none" stroke="#153626" stroke-width="7"/>
-  <rect x="518" y="422" width="100" height="264" rx="8" fill="none" stroke="#153626" stroke-width="7"/>
-  <circle cx="616" cy="470" r="14" fill="url(#${p}-knob)"/>
-  <rect x="712" y="238" width="78" height="52" rx="8" fill="#1f4d34"/>
-  <text x="751" y="275" text-anchor="middle" font-family="Inter Variable, sans-serif" font-weight="800" font-size="30" fill="#f3f0e6">12</text>
-  <rect x="244" y="270" width="36" height="66" rx="8" fill="#23272b"/>
-  <circle cx="262" cy="316" r="14" fill="#ffe29a"/>
-  <rect x="0" y="812" width="1000" height="88" fill="#a79d8f"/>
-  <rect x="262" y="772" width="476" height="48" rx="4" fill="#b8b1a5"/>
-  <rect x="292" y="736" width="416" height="42" rx="4" fill="#cdc6ba"/>
-  <rect x="384" y="712" width="232" height="30" rx="8" fill="#6b4a2e" stroke="#523820" stroke-width="4"/>
-  <g transform="translate(770 600)">
-    <path d="M-44 20 L44 20 L34 136 L-34 136 Z" fill="#c66c40"/>
-    <rect x="-50" y="8" width="100" height="22" rx="6" fill="#b25d33"/>
-    <ellipse cx="-28" cy="-24" rx="22" ry="54" transform="rotate(-28 -28 -24)" fill="#4f9a4a"/>
-    <ellipse cx="26" cy="-30" rx="22" ry="58" transform="rotate(24 26 -30)" fill="#3e823b"/>
-    <ellipse cx="0" cy="-52" rx="20" ry="60" fill="#5aa853"/>
-  </g>
-  <g class="bag">
-    <path d="M470 646 C470 596 530 596 530 646" stroke="#c7b58c" stroke-width="9" fill="none"/>
-    <path d="M488 646 C488 610 512 610 512 646" stroke="#b9a67c" stroke-width="7" fill="none"/>
-    <path d="M438 640 H562 L572 718 C572 726 566 732 558 732 H442 C434 732 428 726 428 718 Z" fill="#efe3c8" stroke="#d3c19d" stroke-width="4"/>
-    <path d="M448 660 H552" stroke="#dccda9" stroke-width="3"/>
-    <g transform="translate(528 664) rotate(8)">
-      <rect x="-2" y="0" width="44" height="30" rx="5" fill="#1f4d34"/>
-      <path d="M8 24 L18 14 M18 14 L28 4 C30 2 33 4 31 7 L22 16 L20 12 Z" stroke="#f3f0e6" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-    </g>
-  </g>
+  <rect width="900" height="1000" fill="url(#${p}-wall)"/>
+  ${night ? `<circle cx="160" cy="330" r="260" fill="url(#${p}-lamp)"/><ellipse cx="450" cy="300" rx="190" ry="150" fill="url(#${p}-lamp)" opacity="0.55"/>` : ""}
+  <rect x="222" y="122" width="456" height="742" rx="8" fill="${c.trim}"/>
+  <rect x="250" y="150" width="400" height="714" rx="4" fill="url(#${p}-door)"/>
+  <rect x="292" y="196" width="316" height="190" rx="10" fill="url(#${p}-win)"/>
+  <path d="M450 196 V386 M292 291 H608" stroke="${c.panel}" stroke-width="12"/>
+  <rect x="292" y="432" width="136" height="378" rx="8" fill="none" stroke="${c.panel}" stroke-width="8"/>
+  <rect x="472" y="432" width="136" height="378" rx="8" fill="none" stroke="${c.panel}" stroke-width="8"/>
+  <circle cx="612" cy="540" r="15" fill="url(#${p}-knob)"/>
+  <rect x="146" y="286" width="30" height="66" rx="8" fill="#1d2023"/>
+  <circle cx="161" cy="330" r="12" fill="${night ? "#ffe6a6" : "#6f7471"}"/>
+  <rect x="120" y="864" width="660" height="56" rx="4" fill="${c.step}"/>
+  <rect x="0" y="920" width="900" height="80" fill="${c.floor}"/>
+  <rect x="318" y="838" width="264" height="30" rx="8" fill="${c.mat}"/>
+  ${night ? "" : `<path d="M0 0 H520 L900 700 V1000 H700 L0 160 Z" fill="url(#${p}-sun)"/>`}
 </svg>`;
 }
 
-export function van(p) {
-  return `<svg class="van-svg" viewBox="0 0 760 380" xmlns="http://www.w3.org/2000/svg">
+/** Canvas tote with three knife handles peeking out: what gets picked up. */
+export function knifeBag(p) {
+  const handle = (x, rot) => `<g transform="translate(${x} 128) rotate(${rot})">
+    <rect x="-17" y="-118" width="34" height="126" rx="15" fill="url(#${p}-h)"/>
+    <rect x="-17" y="-4" width="34" height="12" rx="3" fill="#b9c2c7"/>
+    <circle cx="0" cy="-88" r="4.5" fill="#c9d0d4"/><circle cx="0" cy="-54" r="4.5" fill="#c9d0d4"/><circle cx="0" cy="-20" r="4.5" fill="#c9d0d4"/>
+  </g>`;
+  return `<svg class="bag-svg" viewBox="0 0 320 340" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="${p}-glass" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#d4ecf6"/><stop offset="1" stop-color="#7fb0c9"/>
+    <linearGradient id="${p}-h" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#3a4045"/><stop offset="0.5" stop-color="#1c1f22"/><stop offset="1" stop-color="#0f1113"/>
     </linearGradient>
-    <linearGradient id="${p}-body" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e9ece8"/>
+    <linearGradient id="${p}-canvas" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f3e9d0"/><stop offset="1" stop-color="#d8c69f"/>
     </linearGradient>
-    <radialGradient id="${p}-hub" cx="0.4" cy="0.4" r="0.7">
-      <stop offset="0" stop-color="#e3e8ea"/><stop offset="1" stop-color="#8a9398"/>
+    <radialGradient id="${p}-shadow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#000000" stop-opacity="0.45"/><stop offset="1" stop-color="#000000" stop-opacity="0"/>
     </radialGradient>
   </defs>
-  <ellipse cx="390" cy="364" rx="360" ry="14" fill="#000000" opacity="0.25"/>
-  <path d="M40 250 L40 176 C40 156 54 144 74 140 L192 112 C212 72 242 60 282 60 L702 60 C727 60 742 75 742 100 L742 292 C742 307 730 318 714 318 L62 318 C50 318 40 308 40 296 Z" fill="url(#${p}-body)" stroke="#cfd4d0" stroke-width="3"/>
-  <path d="M204 116 L262 74 L336 74 L336 152 L204 152 Z" fill="url(#${p}-glass)"/>
-  <rect x="356" y="80" width="120" height="72" rx="10" fill="url(#${p}-glass)"/>
-  <rect x="40" y="198" width="702" height="36" fill="#1f4d34"/>
-  <rect x="40" y="236" width="702" height="8" fill="#8fbf5f"/>
-  <text x="612" y="178" text-anchor="middle" font-family="Inter Variable, sans-serif" font-weight="800" font-size="24" letter-spacing="3" fill="#1f4d34">WESTFIELD</text>
-  <text x="612" y="296" text-anchor="middle" font-family="Inter Variable, sans-serif" font-weight="700" font-size="18" letter-spacing="4" fill="#6a716c">KNIFE CARE</text>
-  <path d="M344 162 V310" stroke="#d3d8d4" stroke-width="3"/>
-  <ellipse cx="54" cy="222" rx="12" ry="18" fill="#ffe7a0"/>
-  <rect x="26" y="284" width="130" height="26" rx="12" fill="#2a2e31"/>
-  <circle cx="176" cy="318" r="62" fill="#2a2e31"/>
-  <circle cx="604" cy="318" r="62" fill="#2a2e31"/>
-  <g class="wheel" transform="translate(176 318)"><circle r="48" fill="#1b1e21"/><circle r="24" fill="url(#${p}-hub)"/><path d="M-24 0 H24 M0 -24 V24" stroke="#6d767b" stroke-width="4"/></g>
-  <g class="wheel" transform="translate(604 318)"><circle r="48" fill="#1b1e21"/><circle r="24" fill="url(#${p}-hub)"/><path d="M-24 0 H24 M0 -24 V24" stroke="#6d767b" stroke-width="4"/></g>
+  <ellipse cx="160" cy="326" rx="150" ry="14" fill="url(#${p}-shadow)"/>
+  ${handle(118, -12)}${handle(160, 2)}${handle(202, 14)}
+  <path d="M88 124 C88 52 140 52 140 124" stroke="#c7b387" stroke-width="12" fill="none"/>
+  <path d="M180 124 C180 52 232 52 232 124" stroke="#c7b387" stroke-width="12" fill="none"/>
+  <path d="M52 120 H268 L282 300 C284 314 274 324 260 324 H60 C46 324 36 314 38 300 Z" fill="url(#${p}-canvas)" stroke="#cbb68c" stroke-width="4"/>
+  <path d="M52 120 H268 L270 142 H50 Z" fill="#ddcaa2"/>
+  <g transform="translate(214 170) rotate(6)">
+    <rect width="58" height="42" rx="7" fill="#1f4d34"/>
+    <path d="M12 32 L24 20 M24 20 L38 7 C41 4 45 7 42 11 L30 22 L27 17 Z" stroke="#f3f0e6" stroke-width="3" fill="none" stroke-linecap="round"/>
+  </g>
 </svg>`;
 }
 
-/** Street-grid neighborhood with a delivery route. */
-export function routeMap(p, rand) {
-  const cols = [
-    [40, 206],
-    [234, 396],
-    [424, 586],
-    [614, 760],
-  ];
-  const rows = [
-    [40, 176],
-    [204, 356],
-    [384, 520],
-  ];
-  let blocks = "";
-  let houses = "";
-  cols.forEach(([x0, x1], ci) =>
-    rows.forEach(([y0, y1], ri) => {
-      const park = ci === 3 && ri === 0;
-      blocks += `<rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" rx="16" fill="${park ? "#cfe3bd" : "#fbfbf7"}"/>`;
-      if (park) {
-        for (let i = 0; i < 6; i++) {
-          const x = x0 + 24 + rand() * (x1 - x0 - 48);
-          const y = y0 + 24 + rand() * (y1 - y0 - 48);
-          houses += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(10 + rand() * 8).toFixed(1)}" fill="#9cc57d"/>`;
-        }
-        return;
-      }
-      for (let hx = x0 + 14; hx < x1 - 30; hx += 36) {
-        houses += `<rect x="${hx}" y="${y0 + 12}" width="24" height="18" rx="4" fill="#e2e8d9"/>`;
-        houses += `<rect x="${hx}" y="${y1 - 30}" width="24" height="18" rx="4" fill="#e2e8d9"/>`;
-      }
-    }),
-  );
-  const pins = [
-    [220, 112],
-    [330, 190],
-    [410, 290],
-    [516, 370],
-  ]
-    .map(
-      ([x, y], i) => `<g class="pin" data-i="${i}" transform="translate(${x} ${y})">
-      <g class="pin-inner">
-        <ellipse cx="0" cy="2" rx="12" ry="5" fill="#000000" opacity="0.18"/>
-        <path d="M0 0 C-14 -18 -24 -30 -24 -44 A24 24 0 1 1 24 -44 C24 -30 14 -18 0 0 Z" fill="#1f4d34"/>
-        <circle cx="0" cy="-44" r="9" fill="#f3f0e6"/>
-      </g>
-    </g>`,
-    )
-    .join("");
-  return `<svg class="map-svg" viewBox="0 0 800 560" xmlns="http://www.w3.org/2000/svg">
-  <rect width="800" height="560" rx="30" fill="#e3eada"/>
-  ${blocks}
-  ${houses}
-  <path class="route-glow" d="M220 30 V190 H410 V370 H600 V530" stroke="#9ccc6e" stroke-opacity="0.45" stroke-width="22" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-  <path class="route" id="${p}-route" d="M220 30 V190 H410 V370 H600 V530" stroke="#1f4d34" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-  ${pins}
-  <g class="van-dot"><circle r="17" fill="#9ccc6e" stroke="#ffffff" stroke-width="5"/></g>
+/** Four-point sparkle, for "fresh edge" moments. */
+export function sparkle() {
+  return `<svg viewBox="-50 -50 100 100" xmlns="http://www.w3.org/2000/svg">
+  <path d="M0 -46 L7 -7 L46 0 L7 7 L0 46 L-7 7 L-46 0 L-7 -7 Z" fill="#ffffff"/>
 </svg>`;
 }
 
@@ -346,12 +274,6 @@ export function logoTile(p) {
     <circle cx="148" cy="16" r="3.6" fill="#1d5238"/>
     <circle cx="174" cy="16" r="3.6" fill="#1d5238"/>
   </g>
-</svg>`;
-}
-
-export function cursor() {
-  return `<svg viewBox="0 0 28 36" xmlns="http://www.w3.org/2000/svg">
-  <path d="M3 2 L3 28 L9.5 21.5 L14 32.5 L19 30.5 L14.5 19.5 L24 19.5 Z" fill="#ffffff" stroke="#111814" stroke-width="2" stroke-linejoin="round"/>
 </svg>`;
 }
 
