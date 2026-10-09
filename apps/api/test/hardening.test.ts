@@ -8,7 +8,11 @@ import { createOrder } from "../src/services/orders.ts";
 describe("optimistic order persistence", () => {
   it("rejects stale writes that would overwrite payment or pickup data", async () => {
     const { deps } = makeDeps({ repo: new MemoryRepository() });
-    const { order } = await createOrder(deps, validOrder);
+    const { order } = await createOrder(deps, {
+      ...validOrder,
+      acquisition_channel: "print",
+      notes: undefined,
+    });
     const first = (await deps.repo.getOrder(order.id))!;
     const stale = (await deps.repo.getOrder(order.id))!;
     first.pickup_status = "picked_up";
