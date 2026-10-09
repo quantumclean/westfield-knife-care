@@ -121,7 +121,8 @@ export async function applyPaymentEvent(
 
   switch (event.type) {
     case "checkout_completed": {
-      if (order.payment_status === "paid") return order;
+      // A duplicate or delayed completion must never reverse a refund.
+      if (order.payment_status === "paid" || order.payment_status === "refunded") return order;
       // Never confirm an order if Stripe reports an unexpected total.
       // Throwing returns a non-2xx webhook response so Stripe retries while
       // the mismatch is investigated; no payment state or repeat metrics change.
@@ -149,6 +150,9 @@ export async function applyPaymentEvent(
       order.payment_status = "failed";
       break;
     case "refunded":
+      // Only an already-paid order can become refunded. A delayed or
+      // unrelated refund event must not invent a completed payment.
+      if (order.payment_status !== "paid") return order;
       order.payment_status = "refunded";
       if (event.payment_intent_id) order.stripe_payment_intent_id = event.payment_intent_id;
       break;

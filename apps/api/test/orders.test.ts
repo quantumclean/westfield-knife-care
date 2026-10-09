@@ -199,6 +199,46 @@ describe("payment webhooks", () => {
     expect((await deps.repo.getOrder("id-0001"))!.payment_status).toBe("paid");
   });
 
+  it("never turns a refunded order back to paid on replayed checkout completion", async () => {
+    const { app, deps } = makeDeps();
+    await app.request("/api/orders", json("POST", validOrder));
+
+    const completed = {
+      type: "checkout_completed",
+      order_id: "id-0001",
+      checkout_session_id: "cs_1",
+      payment_intent_id: "pi_1",
+      amount_cents: 3900,
+    };
+    expect((await app.request("/api/webhooks/stripe", webhook(completed))).status).toBe(200);
+    const refund = await app.request(
+      "/api/webhooks/stripe",
+      webhook({ type: "refunded", order_id: "id-0001", payment_intent_id: "pi_1" }),
+    );
+    expect(refund.status).toBe(200);
+    const refunded = (await deps.repo.getOrder("id-0001"))!;
+    expect(refunded.payment_status).toBe("refunded");
+    const replay = await app.request("/api/webhooks/stripe", webhook(completed));
+    expect(replay.status).toBe(200);
+    const after = (await deps.repo.getOrder("id-0001"))!;
+    expect(after.payment_status).toBe("refunded");
+    expect(after.paid_at).toBe(refunded.paid_at);
+    expect(after.updated_at).toBe(refunded.updated_at);
+  });
+
+  it("does not mark a pending order refunded without a confirmed payment", async () => {
+    const { app, deps } = makeDeps();
+    await app.request("/api/orders", json("POST", validOrder));
+    const refund = await app.request(
+      "/api/webhooks/stripe",
+      webhook({ type: "refunded", order_id: "id-0001", payment_intent_id: "pi_1" }),
+    );
+    expect(refund.status).toBe(200);
+    const order = (await deps.repo.getOrder("id-0001"))!;
+    expect(order.payment_status).toBe("pending");
+    expect(order.stripe_payment_intent_id).toBeUndefined();
+  });
+
   it("rejects bad signatures", async () => {
     const { app } = makeDeps();
     const res = await app.request(
