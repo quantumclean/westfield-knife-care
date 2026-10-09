@@ -101,7 +101,11 @@ export class D1Repository implements Repository {
       .prepare("SELECT data FROM orders WHERE customer_email = ? ORDER BY created_at DESC LIMIT ?")
       .bind(email.trim().toLowerCase(), DEFAULT_LIMIT)
       .all<DataRow>();
-    return rows.results.map((row) => JSON.parse(row.data) as Order);
+    return rows.results.map((row) => {
+      const order = JSON.parse(row.data) as Order;
+      order.revision ??= 0;
+      return order;
+    });
   }
 
   async putWaitlistEntry(entry: WaitlistEntry): Promise<void> {
