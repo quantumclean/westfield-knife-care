@@ -35,9 +35,9 @@ export async function handlePagesApi(request: Request, env: PagesBindings): Prom
   if (!env.DB) return unavailable("Booking database has not been connected.");
 
   try {
-    const row = await env.DB
-      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'orders'")
-      .first<{ name: string }>();
+    const row = await env.DB.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'orders'",
+    ).first<{ name: string }>();
     if (!row) return unavailable("Booking database has not been initialized.");
   } catch {
     return unavailable("Booking database is unavailable.");
@@ -114,3 +114,4 @@ export async function handlePagesApi(request: Request, env: PagesBindings): Prom
     headers,
   });
 }
+

@@ -28,12 +28,6 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Show exact formatting for Cloudflare adapter (temporary)
-        run: |
-          echo '<<<PRETTIER_START>>>'
-          pnpm exec prettier apps/api/src/cloudflare.ts
-          echo '<<<PRETTIER_END>>>'
-
       - run: pnpm lint
 
       - run: pnpm typecheck
