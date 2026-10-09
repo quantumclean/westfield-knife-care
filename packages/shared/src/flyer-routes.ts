@@ -39,6 +39,29 @@ export const FLYER_ROUTES: readonly FlyerRoute[] = [
   },
 ];
 
+/**
+ * Normalise a pathname for flyer matching: lowercased, with trailing slashes
+ * removed (the root "/" is kept). This is deliberately narrow — it only
+ * changes how a path is compared against the fixed flyer paths below. A path
+ * that is not a flyer path still returns undefined and keeps its normal
+ * (random) experiment assignment, so nothing else about assignment or pricing
+ * moves.
+ */
+function normaliseFlyerPath(pathname: string): string {
+  const lowered = pathname.toLowerCase().replace(/\/+$/, "");
+  return lowered === "" ? "/" : lowered;
+}
+
+/**
+ * Resolve a vanity flyer path to its pinned experiment and attribution.
+ *
+ * Matching tolerates the ways a hand-typed or shared flyer URL drifts: a
+ * trailing slash (`/a/`) and letter case (`/A`) both still resolve to the
+ * flyer, so a reader never lands on a random experiment and the wrong printed
+ * price. It does NOT match prefixes: `/ab` or `/a/b` are not `/a`. QR codes
+ * should still encode the exact canonical path (`/a`, `/b`).
+ */
 export function resolveFlyerRoute(pathname: string): FlyerRoute | undefined {
-  return FLYER_ROUTES.find((r) => r.path === pathname);
+  const normalised = normaliseFlyerPath(pathname);
+  return FLYER_ROUTES.find((r) => r.path === normalised);
 }
