@@ -37,7 +37,7 @@ export function Pricing({ experiment, onBook, onPilot }: PricingProps) {
                 <span class="price-amount price-amount-sm">Join the waitlist</span>
               </p>
               <p class="muted">
-                Give us a dull knife, get a sharp one. Weekly, biweekly or monthly.
+                Register interest in a possible recurring knife-care service.
               </p>
               <Button variant="secondary" onClick={onPilot} arrow>
                 Join the Waitlist
@@ -45,8 +45,7 @@ export function Pricing({ experiment, onBook, onPilot }: PricingProps) {
             </Card>
           </div>
           <p class="muted pricing-footnote">
-            {describePrice(price)}, {offer.turnaround_promise.toLowerCase()}. Pay securely by card
-            when you book.
+            {describePrice(price)}. Stripe processes payment when you complete checkout.
           </p>
         </div>
         <div class="why-us">

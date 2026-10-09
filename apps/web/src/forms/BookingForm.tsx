@@ -142,7 +142,7 @@ export function BookingForm({ session, experiment }: BookingFormProps) {
   return (
     <form class="booking-form" ref={formRef} onSubmit={onSubmit} noValidate>
       <p class="muted">
-        {offer.value_line} {offer.turnaround_promise}.
+        Please review your pickup day and total before checkout. Return timing is confirmed separately.
       </p>
 
       {availability.status === "closed" && (
@@ -218,7 +218,7 @@ export function BookingForm({ session, experiment }: BookingFormProps) {
           label="Phone"
           htmlFor="phone"
           error={errors["customer.phone"]}
-          hint="For pickup and return texts."
+          hint="Optional contact number. Text notifications are not automated."
         >
           <Input id="phone" name="phone" type="tel" autocomplete="tel" />
         </Field>
@@ -294,7 +294,7 @@ export function BookingForm({ session, experiment }: BookingFormProps) {
                 : `Pay ${formatMoney(quote.total_cents, quote.currency)} and book`}
         </Button>
         <span class="muted footnote">
-          Secure card payment via Stripe. Full refund if we cannot pick up.
+          Stripe processes payment at checkout. No voluntary refund guarantee is offered; applicable legal rights remain unchanged.
         </span>
       </div>
     </form>

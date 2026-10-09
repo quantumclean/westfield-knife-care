@@ -72,8 +72,7 @@ export function PilotForm({ session }: { session: Session }) {
   if (done) {
     return (
       <Notice tone="success">
-        <strong>You are on the list.</strong> We will email you when the Always Sharp pilot opens in
-        Westfield. Until then, you can still book a one-off sharpening.
+        <strong>Your interest has been saved.</strong> This is a pilot interest list, not a confirmed subscription or service booking.
       </Notice>
     );
   }
@@ -81,8 +80,8 @@ export function PilotForm({ session }: { session: Session }) {
   return (
     <form ref={formRef} onSubmit={onSubmit} noValidate>
       <p class="muted">
-        Always Sharp is a swap program: hand us a dull knife, take a sharp one. Tell us what rhythm
-        suits your kitchen and we will invite Westfield households first.
+        We are exploring a recurring knife-care pilot. Share the schedule you would prefer;
+        joining the interest list does not commit you to a purchase.
       </p>
       <Field label="Your name" htmlFor="pilot-name" required error={errors.name}>
         <Input id="pilot-name" name="name" autocomplete="name" required />

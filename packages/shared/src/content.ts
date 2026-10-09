@@ -5,7 +5,7 @@
 export const BRAND = {
   name: "Westfield Knife Care",
   short_name: "Westfield",
-  tagline: "Local service. No shipping. Real people.",
+  tagline: "Local knife sharpening.",
   service_area: "Westfield",
   support_email: "hello@sharp.usabiology.com",
 } as const;
@@ -14,29 +14,29 @@ export const HOW_IT_WORKS = [
   {
     step: 1,
     title: "We pick up",
-    body: "Schedule a pickup at your home or office in Westfield.",
+    body: "Choose an available pickup day when booking.",
     icon: "truck",
   },
   {
     step: 2,
     title: "We sharpen",
-    body: "Professional sharpening by hand or precision equipment.",
+    body: "Your knives are sharpened.",
     icon: "knife",
   },
   {
     step: 3,
     title: "We return",
-    body: "Fast turnaround, back to your doorstep.",
+    body: "Return arrangements are confirmed with your order.",
     icon: "home",
   },
 ] as const;
 
 export const WHY_US = [
-  "Local, no shipping",
-  "Fast turnaround",
-  "Trusted, professional sharpening",
-  "Safer, better cooking",
-  "Support a local business",
+  "Kitchen-knife sharpening",
+  "Clear bundle pricing",
+  "Available pickup dates shown before checkout",
+  "Secure card checkout",
+  "Optional pilot waitlist",
 ] as const;
 
 export const FAQ = [
@@ -56,7 +56,7 @@ export const FAQ = [
     id: "turnaround",
     question: "How long does it take?",
     answer:
-      "Most orders are back the next day, and always within the turnaround promised when you booked. You get a text when they are on the way.",
+      "Available pickup dates appear during booking. Return timing and handoff details must be confirmed separately; no next-day or 48-hour turnaround is guaranteed.",
   },
   {
     id: "always-sharp",
@@ -68,12 +68,12 @@ export const FAQ = [
     id: "payment",
     question: "How do I pay?",
     answer:
-      "Securely by card through Stripe when you book. You are only charged once the booking is confirmed, and we refund in full if we cannot pick up on your chosen day.",
+      "Stripe processes your card payment when you complete checkout. No voluntary refund guarantee is offered. Refunds and other remedies required by applicable law remain available.",
   },
   {
     id: "area",
     question: "Which areas do you cover?",
     answer:
-      "Westfield and the immediate neighbourhoods for now. If you are just outside, join the waitlist and tell us where you are; routes expand based on demand.",
+      "Service availability depends on your pickup address. Please confirm your area before paying; the waitlist is open to people interested in future availability.",
   },
 ] as const;
