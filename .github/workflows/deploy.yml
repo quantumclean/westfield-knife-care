@@ -55,15 +55,18 @@ jobs:
           VITE_GA4_MEASUREMENT_ID: ${{ vars.VITE_GA4_MEASUREMENT_ID }}
 
       - uses: aws-actions/configure-aws-credentials@v4
+        if: secrets.AWS_DEPLOY_ROLE_ARN != ''
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - uses: hashicorp/setup-terraform@v3
+        if: secrets.AWS_DEPLOY_ROLE_ARN != ''
         with:
           terraform_wrapper: false
 
       - name: Terraform init
+        if: secrets.AWS_DEPLOY_ROLE_ARN != ''
         working-directory: infrastructure/terraform
         run: |
           terraform init -input=false \
@@ -74,6 +77,7 @@ jobs:
             -backend-config="use_lockfile=true"
 
       - name: Terraform apply
+        if: secrets.AWS_DEPLOY_ROLE_ARN != ''
         working-directory: infrastructure/terraform
         env:
           TF_VAR_stage: ${{ env.TF_STAGE }}
@@ -83,6 +87,7 @@ jobs:
         run: terraform apply -input=false -auto-approve
 
       - name: Read outputs
+        if: secrets.AWS_DEPLOY_ROLE_ARN != ''
         id: tf
         working-directory: infrastructure/terraform
         run: |
@@ -91,6 +96,7 @@ jobs:
           echo "site_url=$(terraform output -raw site_url)" >> "$GITHUB_OUTPUT"
 
       - name: Publish site
+        if: secrets.AWS_DEPLOY_ROLE_ARN != ''
         run: |
           # Hashed assets are immutable; HTML must always revalidate.
           aws s3 sync apps/web/dist "s3://${{ steps.tf.outputs.bucket }}" \
@@ -105,6 +111,7 @@ jobs:
             --paths "/*" > /dev/null
 
       - name: Smoke test
+        if: secrets.AWS_DEPLOY_ROLE_ARN != ''
         run: |
           for i in 1 2 3 4 5 6; do
             if curl -fsS "${{ steps.tf.outputs.site_url }}/api/health"; then exit 0; fi
