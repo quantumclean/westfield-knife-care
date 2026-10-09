@@ -13,27 +13,30 @@ export interface PagesBindings {
   STRIPE_WEBHOOK_SECRET?: string;
   ADMIN_API_KEY?: string;
 }
+
 class DisabledPayments implements PaymentGateway {
   async createCheckoutSession(): Promise<never> {
     throw new Error("Payments are not configured");
   }
+
   async parseWebhook(): Promise<never> {
     throw new WebhookVerificationError("Payments are not configured");
   }
 }
-const unavailable = (message: string) => Response.json(
-  { error: "service_unavailable", message },
-  { status: 503, headers: { "Cache-Control": "no-store" } }
-);
+
+const unavailable = (message: string) =>
+  Response.json(
+    { error: "service_unavailable", message },
+    { status: 503, headers: { "Cache-Control": "no-store" } },
+  );
 
 /** Cloudflare Pages Functions adapter; no AWS SDK or fake payment fallback. */
-export async function handlePagesApi(
-  request: Request, env: PagesBindings
-): Promise<Response> {
+export async function handlePagesApi(request: Request, env: PagesBindings): Promise<Response> {
   if (!env.DB) return unavailable("Booking database has not been connected.");
+
   try {
     const row = await env.DB.prepare(
-      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'orders'"
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'orders'",
     ).first<{ name: string }>();
     if (!row) return unavailable("Booking database has not been initialized.");
   } catch {
@@ -45,28 +48,37 @@ export async function handlePagesApi(
   try {
     if (env.SITE_URL) {
       const parsed = new URL(env.SITE_URL);
-      if (parsed.protocol === "https:" && parsed.origin === requestOrigin &&
-          parsed.pathname === "/" && !parsed.search && !parsed.hash) {
+      if (
+        parsed.protocol === "https:" &&
+        parsed.origin === requestOrigin &&
+        parsed.pathname === "/" &&
+        !parsed.search &&
+        !parsed.hash
+      ) {
         configuredOrigin = parsed.origin;
       }
     }
   } catch {
     // A missing, mismatched or malformed SITE_URL cannot enable Stripe.
   }
+
   const isProd = env.STAGE === "production";
   const isStaging = env.STAGE === "staging";
   const key = env.STRIPE_SECRET_KEY?.trim();
   const signatureSecret = env.STRIPE_WEBHOOK_SECRET?.trim();
-  const correctKeyMode = isProd ? key?.startsWith("sk_live_") :
-    isStaging ? key?.startsWith("sk_test_") : false;
-  const paymentsReady = Boolean(
-    configuredOrigin && key && signatureSecret && correctKeyMode
-  );
+  const correctKeyMode = isProd
+    ? key?.startsWith("sk_live_")
+    : isStaging
+      ? key?.startsWith("sk_test_")
+      : false;
+  const paymentsReady = Boolean(configuredOrigin && key && signatureSecret && correctKeyMode);
 
   const path = new URL(request.url).pathname;
-  if (request.method === "POST" &&
-      (path === "/api/orders" || path === "/api/webhooks/stripe") &&
-      !paymentsReady) {
+  if (
+    request.method === "POST" &&
+    (path === "/api/orders" || path === "/api/webhooks/stripe") &&
+    !paymentsReady
+  ) {
     return unavailable("Online booking is temporarily unavailable.");
   }
 
@@ -92,10 +104,13 @@ export async function handlePagesApi(
     newId,
     log: jsonLog,
   };
+
   const response = await createApp(deps).fetch(request);
   const headers = new Headers(response.headers);
   headers.set("Cache-Control", "no-store");
   return new Response(response.body, {
-    status: response.status, statusText: response.statusText, headers
+    status: response.status,
+    statusText: response.statusText,
+    headers,
   });
 }

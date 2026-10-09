@@ -23,14 +23,16 @@ export class StripeGateway implements PaymentGateway {
   private readonly stripe: Stripe;
   private readonly webhookSecret: string | undefined;
   private readonly ttlMinutes: number;
+  private readonly runtime: "node" | "worker";
 
   constructor(options: StripeGatewayOptions) {
-    this.stripe = options.runtime === "worker"
-      ? new Stripe(options.secret_key, {
-          httpClient: Stripe.createFetchHttpClient(),
-          cryptoProvider: Stripe.createSubtleCryptoProvider(),
-        })
-      : new Stripe(options.secret_key);
+    this.runtime = options.runtime ?? "node";
+    this.stripe =
+      this.runtime === "worker"
+        ? new Stripe(options.secret_key, {
+            httpClient: Stripe.createFetchHttpClient(),
+          })
+        : new Stripe(options.secret_key);
     this.webhookSecret = options.webhook_secret;
     this.ttlMinutes = Math.max(30, options.session_ttl_minutes ?? 60);
   }
@@ -84,6 +86,8 @@ export class StripeGateway implements PaymentGateway {
         rawBody,
         signature,
         this.webhookSecret,
+        undefined,
+        this.runtime === "worker" ? Stripe.createSubtleCryptoProvider() : undefined,
       );
     } catch (error) {
       throw new WebhookVerificationError((error as Error).message);
