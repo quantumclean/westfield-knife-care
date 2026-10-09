@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import {
   BRAND,
   createOrderSchema,
@@ -11,6 +11,7 @@ import {
 import { Button, Field, Input, Notice, Select, Textarea } from "@wkc/ui";
 import { ApiError, api } from "../lib/api.ts";
 import { EVENTS, track } from "../lib/analytics.ts";
+import { errorSummary, useFocusFirstInvalid } from "../lib/forms.ts";
 import {
   closedMessage,
   pickCareDay,
@@ -46,6 +47,8 @@ export function BookingForm({ session, experiment }: BookingFormProps) {
   const [failure, setFailure] = useState<string | null>(null);
   const [configState, setConfigState] = useState<ConfigState>({ status: "loading" });
   const [configAttempt, setConfigAttempt] = useState(0);
+  const formRef = useRef<HTMLFormElement>(null);
+  useFocusFirstInvalid(formRef, errors);
 
   useEffect(() => {
     let cancelled = false;
@@ -137,7 +140,7 @@ export function BookingForm({ session, experiment }: BookingFormProps) {
   const knifeOptions = Array.from({ length: price.max_knives }, (_, i) => i + 1);
 
   return (
-    <form class="booking-form" onSubmit={onSubmit} noValidate>
+    <form class="booking-form" ref={formRef} onSubmit={onSubmit} noValidate>
       <p class="muted">
         {offer.value_line} {offer.turnaround_promise}.
       </p>
@@ -275,6 +278,9 @@ export function BookingForm({ session, experiment }: BookingFormProps) {
         <Textarea id="notes" name="notes" />
       </Field>
 
+      <p class="visually-hidden" role="status">
+        {errorSummary(errors)}
+      </p>
       {failure && <Notice tone="error">{failure}</Notice>}
 
       <div class="form-actions">

@@ -1,8 +1,9 @@
-import { useState } from "preact/hooks";
+import { useRef, useState } from "preact/hooks";
 import { CADENCES, SERVICE_INTERESTS, createWaitlistSchema } from "@wkc/shared";
 import { Button, Field, Input, Notice, Select, Textarea } from "@wkc/ui";
 import { ApiError, api } from "../lib/api.ts";
 import { EVENTS, track } from "../lib/analytics.ts";
+import { errorSummary, useFocusFirstInvalid } from "../lib/forms.ts";
 import { sessionContext, type Session } from "../lib/session.ts";
 
 const INTEREST_LABELS: Record<(typeof SERVICE_INTERESTS)[number], string> = {
@@ -22,6 +23,8 @@ export function PilotForm({ session }: { session: Session }) {
   const [failure, setFailure] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  useFocusFirstInvalid(formRef, errors);
 
   async function onSubmit(event: Event) {
     event.preventDefault();
@@ -76,7 +79,7 @@ export function PilotForm({ session }: { session: Session }) {
   }
 
   return (
-    <form onSubmit={onSubmit} noValidate>
+    <form ref={formRef} onSubmit={onSubmit} noValidate>
       <p class="muted">
         Always Sharp is a swap program: hand us a dull knife, take a sharp one. Tell us what rhythm
         suits your kitchen and we will invite Westfield households first.
@@ -125,6 +128,9 @@ export function PilotForm({ session }: { session: Session }) {
       >
         <Textarea id="pilot-notes" name="notes" />
       </Field>
+      <p class="visually-hidden" role="status">
+        {errorSummary(errors)}
+      </p>
       {failure && <Notice tone="error">{failure}</Notice>}
       <div class="form-actions">
         <Button type="submit" size="lg" disabled={submitting} arrow>

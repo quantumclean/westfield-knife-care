@@ -100,14 +100,18 @@ function ThanksPage() {
     <main class="container thanks">
       <Logo name={BRAND.name} />
       {error && <Notice tone="error">{error}</Notice>}
-      {!error && !order && <p class="muted">Loading your order…</p>}
+      {!error && !order && (
+        <p class="muted" role="status">
+          Loading your order…
+        </p>
+      )}
       {order && (
         <>
           <h1>
             {paid ? `Thank you${order.first_name ? `, ${order.first_name}` : ""}!` : "Almost there"}
           </h1>
           {paid ? (
-            <p>
+            <p role="status">
               Your {order.number_of_knives}{" "}
               {order.number_of_knives === 1 ? "knife is" : "knives are"} booked for pickup on{" "}
               <strong>{formatCareDay(order.care_day)}</strong>. Leave them wrapped in a bag at your
@@ -127,7 +131,9 @@ function ThanksPage() {
               </p>
             </>
           ) : order.payment_status === "pending" ? (
-            <p class="muted">Confirming your payment…</p>
+            <p class="muted" role="status">
+              Confirming your payment…
+            </p>
           ) : (
             <Notice tone="error">
               This booking was not paid ({order.payment_status}). Start again from the home page.
