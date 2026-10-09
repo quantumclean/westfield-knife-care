@@ -38,7 +38,7 @@ function issuesToErrors(issues: string[]): Errors {
 }
 
 export function BookingForm({ session, experiment }: BookingFormProps) {
-  const { price, offer } = experiment;
+  const { price } = experiment;
   const [careDays, setCareDays] = useState<string[]>(() => upcomingCareDays());
   const [knives, setKnives] = useState(price.knives_included);
   const [careDay, setCareDay] = useState<string>("");
@@ -142,7 +142,7 @@ export function BookingForm({ session, experiment }: BookingFormProps) {
   return (
     <form class="booking-form" ref={formRef} onSubmit={onSubmit} noValidate>
       <p class="muted">
-        {offer.value_line} {offer.turnaround_promise}.
+        Pickup dates and the total are shown before checkout. Return timing is confirmed separately.
       </p>
 
       {availability.status === "closed" && (
