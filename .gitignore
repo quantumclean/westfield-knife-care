@@ -25,3 +25,9 @@ crash.log
 # misc
 .DS_Store
 *.log
+
+# wrangler / Cloudflare Pages local state and local secrets
+.wrangler/
+.dev.vars
+.dev.vars.*
+.tmp/

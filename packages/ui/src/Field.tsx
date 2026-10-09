@@ -1,4 +1,4 @@
-import type { ComponentChildren, JSX } from "preact";
+import { cloneElement, isValidElement, type ComponentChildren, type JSX } from "preact";
 
 export interface FieldProps {
   label: string;
@@ -10,6 +10,14 @@ export interface FieldProps {
 }
 
 export function Field({ label, htmlFor, hint, error, required, children }: FieldProps) {
+  // The control is the single child; tie the hint or error to it and flag it invalid.
+  const messageId = error ? `${htmlFor}-error` : hint ? `${htmlFor}-hint` : undefined;
+  const control = isValidElement(children)
+    ? cloneElement(children as JSX.Element, {
+        "aria-invalid": error ? "true" : undefined,
+        "aria-describedby": messageId,
+      })
+    : children;
   return (
     <div class={`field${error ? " field-error" : ""}`}>
       <label for={htmlFor}>
@@ -21,10 +29,14 @@ export function Field({ label, htmlFor, hint, error, required, children }: Field
           </span>
         )}
       </label>
-      {children}
-      {hint && !error && <p class="field-hint">{hint}</p>}
+      {control}
+      {hint && !error && (
+        <p class="field-hint" id={`${htmlFor}-hint`}>
+          {hint}
+        </p>
+      )}
       {error && (
-        <p class="field-message" role="alert">
+        <p class="field-message" id={`${htmlFor}-error`}>
           {error}
         </p>
       )}

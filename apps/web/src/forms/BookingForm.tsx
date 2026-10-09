@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import {
+  BRAND,
   createOrderSchema,
   formatCareDay,
   formatMoney,
@@ -10,6 +11,13 @@ import {
 import { Button, Field, Input, Notice, Select, Textarea } from "@wkc/ui";
 import { ApiError, api } from "../lib/api.ts";
 import { EVENTS, track } from "../lib/analytics.ts";
+import { errorSummary, useFocusFirstInvalid } from "../lib/forms.ts";
+import {
+  closedMessage,
+  pickCareDay,
+  resolveAvailability,
+  type ConfigState,
+} from "../lib/booking.ts";
 import { sessionContext, type Session } from "../lib/session.ts";
 
 export interface BookingFormProps {
@@ -37,24 +45,43 @@ export function BookingForm({ session, experiment }: BookingFormProps) {
   const [errors, setErrors] = useState<Errors>({});
   const [submitting, setSubmitting] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const [configState, setConfigState] = useState<ConfigState>({ status: "loading" });
+  const [configAttempt, setConfigAttempt] = useState(0);
+  const formRef = useRef<HTMLFormElement>(null);
+  useFocusFirstInvalid(formRef, errors);
 
   useEffect(() => {
+    let cancelled = false;
+    setConfigState({ status: "loading" });
     api
       .config()
       .then((config) => {
+        if (cancelled) return;
         if (config.care_days.length) setCareDays(config.care_days);
+        setConfigState({ status: "ready", config });
       })
-      .catch(() => {});
-  }, []);
+      .catch(() => {
+        if (!cancelled) setConfigState({ status: "error" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [configAttempt]);
 
+  // The server's list is the authority: if it no longer offers the chosen
+  // day (stale device clock, a day rolling over), move to one it does offer.
   useEffect(() => {
-    if (!careDay && careDays[0]) setCareDay(careDays[0]);
-  }, [careDays, careDay]);
+    setCareDay((current) => pickCareDay(current, careDays));
+  }, [careDays]);
+
+  const availability = resolveAvailability(configState, { dev: import.meta.env.DEV });
+  const open = availability.status === "open";
 
   const quote = useMemo(() => quoteOrder(price, knives), [price, knives]);
 
   async function onSubmit(event: Event) {
     event.preventDefault();
+    if (!open || submitting) return;
     const form = new FormData(event.currentTarget as HTMLFormElement);
     const value = (key: string) => String(form.get(key) ?? "").trim();
     const candidate = {
@@ -113,10 +140,21 @@ export function BookingForm({ session, experiment }: BookingFormProps) {
   const knifeOptions = Array.from({ length: price.max_knives }, (_, i) => i + 1);
 
   return (
-    <form class="booking-form" onSubmit={onSubmit} noValidate>
+    <form class="booking-form" ref={formRef} onSubmit={onSubmit} noValidate>
       <p class="muted">
         {offer.value_line} {offer.turnaround_promise}.
       </p>
+
+      {availability.status === "closed" && (
+        <div class="booking-closed">
+          <Notice tone="error">{closedMessage(availability.reason, BRAND.support_email)}</Notice>
+          {availability.reason === "unreachable" && (
+            <Button variant="secondary" onClick={() => setConfigAttempt((n) => n + 1)}>
+              Try again
+            </Button>
+          )}
+        </div>
+      )}
 
       <div class="form-row">
         <Field label="How many knives?" htmlFor="knives" required error={errors.number_of_knives}>
@@ -208,7 +246,14 @@ export function BookingForm({ session, experiment }: BookingFormProps) {
       </Field>
       <div class="form-row form-row-3">
         <Field label="City" htmlFor="city" required error={errors["customer.address.city"]}>
-          <Input id="city" name="city" autocomplete="address-level2" value="Westfield" required />
+          {/* defaultValue, not value: the field is uncontrolled, so re-renders must not reset it. */}
+          <Input
+            id="city"
+            name="city"
+            autocomplete="address-level2"
+            defaultValue="Westfield"
+            required
+          />
         </Field>
         <Field label="State" htmlFor="state" required error={errors["customer.address.state"]}>
           <Input
@@ -233,13 +278,20 @@ export function BookingForm({ session, experiment }: BookingFormProps) {
         <Textarea id="notes" name="notes" />
       </Field>
 
+      <p class="visually-hidden" role="status">
+        {errorSummary(errors)}
+      </p>
       {failure && <Notice tone="error">{failure}</Notice>}
 
       <div class="form-actions">
-        <Button type="submit" size="lg" disabled={submitting} arrow>
+        <Button type="submit" size="lg" disabled={submitting || !open} arrow>
           {submitting
             ? "Taking you to payment…"
-            : `Pay ${formatMoney(quote.total_cents, quote.currency)} and book`}
+            : availability.status === "checking"
+              ? "Checking availability…"
+              : availability.status === "closed"
+                ? "Booking unavailable"
+                : `Pay ${formatMoney(quote.total_cents, quote.currency)} and book`}
         </Button>
         <span class="muted footnote">
           Secure card payment via Stripe. Full refund if we cannot pick up.

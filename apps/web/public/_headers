@@ -1,0 +1,16 @@
+# Cloudflare Pages response headers (copied to apps/web/dist/_headers by Vite).
+#
+# Pages already sends X-Content-Type-Options: nosniff and
+# Referrer-Policy: strict-origin-when-cross-origin on static responses, so they
+# are not repeated here. HSTS is a Cloudflare zone setting and a Content
+# Security Policy has not been tested against analytics yet; see
+# docs/cloudflare-pages.md before adding either.
+#
+# apps/web/test/deploy-config.test.ts pins this file to exactly these rules.
+
+/*
+  X-Frame-Options: DENY
+
+# Vite writes content-hashed filenames under /assets, so they can be cached forever.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

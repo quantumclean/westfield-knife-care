@@ -327,6 +327,7 @@ a {
   padding: 0;
   width: min(560px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
   background: var(--color-bg);
   color: var(--color-text);
   box-shadow: var(--shadow);
@@ -338,6 +339,7 @@ a {
   padding: 1.5rem;
   overflow-y: auto;
   max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
 }
 .modal-header {
   display: flex;

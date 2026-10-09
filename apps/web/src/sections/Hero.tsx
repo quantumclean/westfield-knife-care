@@ -1,5 +1,4 @@
 import type { OfferVersion } from "@wkc/shared";
-import { Button } from "@wkc/ui";
 
 export interface HeroProps {
   offer: OfferVersion;
@@ -52,9 +51,6 @@ export function Hero({ offer, onBook, onPilot }: HeroProps) {
           <img src="/images/hero.svg" width="640" height="480" alt="" fetchpriority="high" />
         </div>
       </div>
-      <p class="visually-hidden">
-        <Button onClick={onBook}>{offer.cta_primary}</Button>
-      </p>
     </section>
   );
 }
