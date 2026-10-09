@@ -28,6 +28,16 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Temporary formatting and diagnostics
+        run: |
+          for file in docs/cloudflare-hardening-rollout.md workers/cleanup/wrangler.jsonc; do
+            echo "FORMATTED_START:$file"
+            pnpm exec prettier "$file" | base64 -w0
+            printf '\nFORMATTED_END\n'
+          done
+          pnpm typecheck || true
+          pnpm test || true
+
       - run: pnpm lint
 
       - run: pnpm typecheck
