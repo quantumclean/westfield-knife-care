@@ -1,12 +1,17 @@
 import type { AnalyticsEvent, Order, WaitlistEntry } from "@wkc/shared";
-import type { ListEventsOptions, ListOrdersOptions, Repository } from "./types.ts";
+import {
+  OrderWriteConflict,
+  type ListEventsOptions,
+  type ListOrdersOptions,
+  type Repository,
+} from "./types.ts";
 
 /** Structural D1 types keep the existing Node-only API build independent. */
 export interface D1Statement {
   bind(...values: (string | number | null)[]): D1Statement;
   first<T>(): Promise<T | null>;
   all<T>(): Promise<{ results: T[] }>;
-  run(): Promise<unknown>;
+  run(): Promise<{ meta: { changes: number } }>;
 }
 
 export interface D1Database {
@@ -28,21 +33,41 @@ export class D1Repository implements Repository {
   constructor(private readonly db: D1Database) {}
 
   async putOrder(order: Order): Promise<void> {
-    await this.db
-      .prepare(
-        "INSERT INTO orders (id, created_at, updated_at, customer_email, experiment_id, data) " +
-          "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET " +
-          "updated_at = excluded.updated_at, data = excluded.data",
-      )
-      .bind(
-        order.id,
-        order.created_at,
-        order.updated_at,
-        order.customer.email.trim().toLowerCase(),
-        order.experiment_id,
-        JSON.stringify(order),
-      )
-      .run();
+    const previousRevision = order.revision;
+    const nextRevision = (previousRevision ?? 0) + 1;
+    const updated = { ...order, revision: nextRevision };
+    const result =
+      previousRevision === undefined
+        ? await this.db
+            .prepare(
+              "INSERT INTO orders (id, created_at, updated_at, customer_email, experiment_id, data) " +
+                "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
+            )
+            .bind(
+              order.id,
+              order.created_at,
+              order.updated_at,
+              order.customer.email.trim().toLowerCase(),
+              order.experiment_id,
+              JSON.stringify(updated),
+            )
+            .run()
+        : await this.db
+            .prepare(
+              "UPDATE orders SET updated_at = ?, customer_email = ?, experiment_id = ?, data = ? " +
+                "WHERE id = ? AND COALESCE(json_extract(data, '$.revision'), 0) = ?",
+            )
+            .bind(
+              order.updated_at,
+              order.customer.email.trim().toLowerCase(),
+              order.experiment_id,
+              JSON.stringify(updated),
+              order.id,
+              previousRevision,
+            )
+            .run();
+    if (result.meta.changes !== 1) throw new OrderWriteConflict("Order changed during update");
+    order.revision = nextRevision;
   }
 
   async getOrder(id: string): Promise<Order | undefined> {
@@ -50,7 +75,10 @@ export class D1Repository implements Repository {
       .prepare("SELECT data FROM orders WHERE id = ?")
       .bind(id)
       .first<DataRow>();
-    return row ? (JSON.parse(row.data) as Order) : undefined;
+    if (!row) return undefined;
+    const order = JSON.parse(row.data) as Order;
+    order.revision ??= 0; // Existing staging rows created before revision tracking.
+    return order;
   }
 
   async listOrders(options: ListOrdersOptions = {}): Promise<Order[]> {
@@ -61,7 +89,11 @@ export class D1Repository implements Repository {
     const rows = options.experiment_id
       ? await statement.bind(options.experiment_id, limitValue(options.limit)).all<DataRow>()
       : await statement.bind(limitValue(options.limit)).all<DataRow>();
-    return rows.results.map((row) => JSON.parse(row.data) as Order);
+    return rows.results.map((row) => {
+      const order = JSON.parse(row.data) as Order;
+      order.revision ??= 0;
+      return order;
+    });
   }
 
   async findOrdersByEmail(email: string): Promise<Order[]> {

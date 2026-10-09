@@ -21,10 +21,18 @@ export type PaymentEvent =
       checkout_session_id: string;
       payment_intent_id?: string;
       amount_cents?: number;
+      currency?: string;
     }
   | { type: "checkout_expired"; order_id: string; checkout_session_id: string }
   | { type: "payment_failed"; order_id: string; checkout_session_id: string }
-  | { type: "refunded"; order_id: string; payment_intent_id?: string }
+  | {
+      type: "refunded";
+      order_id: string;
+      payment_intent_id?: string;
+      /** Stripe charge.amount_refunded is the cumulative total, not this event delta. */
+      refunded_amount_cents?: number;
+      original_amount_cents?: number;
+    }
   | { type: "ignored"; provider_type: string };
 
 export class WebhookVerificationError extends Error {

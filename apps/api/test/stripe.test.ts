@@ -25,6 +25,7 @@ describe("normaliseStripeEvent", () => {
       checkout_session_id: "cs_test_1",
       payment_intent_id: "pi_1",
       amount_cents: 3900,
+      currency: undefined,
     });
   });
 
@@ -44,9 +45,17 @@ describe("normaliseStripeEvent", () => {
         id: "ch_1",
         metadata: { order_id: "order-1" },
         payment_intent: { id: "pi_1" },
+        amount: 3900,
+        amount_refunded: 3900,
       }),
     );
-    expect(refund).toEqual({ type: "refunded", order_id: "order-1", payment_intent_id: "pi_1" });
+    expect(refund).toEqual({
+      type: "refunded",
+      order_id: "order-1",
+      payment_intent_id: "pi_1",
+      original_amount_cents: 3900,
+      refunded_amount_cents: 3900,
+    });
   });
 
   it("ignores unrelated events", () => {
