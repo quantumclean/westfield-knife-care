@@ -12,6 +12,7 @@ export interface StripeGatewayOptions {
   webhook_secret?: string;
   /** Minutes before an unpaid Checkout session expires (Stripe minimum 30). */
   session_ttl_minutes?: number;
+  runtime?: "node" | "worker";
 }
 
 /**
@@ -24,7 +25,12 @@ export class StripeGateway implements PaymentGateway {
   private readonly ttlMinutes: number;
 
   constructor(options: StripeGatewayOptions) {
-    this.stripe = new Stripe(options.secret_key);
+    this.stripe = options.runtime === "worker"
+      ? new Stripe(options.secret_key, {
+          httpClient: Stripe.createFetchHttpClient(),
+          cryptoProvider: Stripe.createSubtleCryptoProvider(),
+        })
+      : new Stripe(options.secret_key);
     this.webhookSecret = options.webhook_secret;
     this.ttlMinutes = Math.max(30, options.session_ttl_minutes ?? 60);
   }
