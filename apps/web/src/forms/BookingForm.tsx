@@ -218,7 +218,7 @@ export function BookingForm({ session, experiment }: BookingFormProps) {
           label="Phone"
           htmlFor="phone"
           error={errors["customer.phone"]}
-          hint="For pickup and return texts."
+          hint="Optional. We may use it to coordinate pickup and return."
         >
           <Input id="phone" name="phone" type="tel" autocomplete="tel" />
         </Field>
@@ -293,9 +293,7 @@ export function BookingForm({ session, experiment }: BookingFormProps) {
                 ? "Booking unavailable"
                 : `Pay ${formatMoney(quote.total_cents, quote.currency)} and book`}
         </Button>
-        <span class="muted footnote">
-          Secure card payment via Stripe. Full refund if we cannot pick up.
-        </span>
+        <span class="muted footnote">Secure card payment via Stripe.</span>
       </div>
     </form>
   );

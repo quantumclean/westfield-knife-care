@@ -123,7 +123,7 @@ function ThanksPage() {
               Your {order.number_of_knives}{" "}
               {order.number_of_knives === 1 ? "knife is" : "knives are"} booked for pickup on{" "}
               <strong>{formatCareDay(order.care_day)}</strong>. Leave them wrapped in a bag at your
-              door in the morning and we will text you when they are on their way back.
+              door in the morning.
             </p>
           ) : order.payment_status === "pending" && gaveUp ? (
             <>
