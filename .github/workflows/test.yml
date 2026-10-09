@@ -28,6 +28,16 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Temporary formatting and downstream checks
+        run: |
+          for file in apps/web/src/forms/BookingForm.tsx apps/web/src/forms/PilotForm.tsx apps/web/src/sections/Hero.tsx apps/web/src/sections/Pricing.tsx; do
+            echo "FORMATTED_START:$file"
+            pnpm exec prettier "$file" | base64 -w0
+            printf '\nFORMATTED_END\n'
+          done
+          pnpm typecheck || true
+          pnpm test || true
+
       - run: pnpm lint
 
       - run: pnpm typecheck
