@@ -26,7 +26,7 @@ export function Hero({ offer, onBook, onPilot }: HeroProps) {
     <section class="hero">
       <div class="container hero-inner">
         <div class="hero-copy">
-          <p class="eyebrow">Local Pickup • Professional Sharpening • Fast Return</p>
+          <p class="eyebrow">Local Pickup • Knife Sharpening • Return to Your Door</p>
           <Headline offer={offer} />
           <p class="hero-subhead">{offer.subhead}</p>
           <p class="hero-promise">{offer.turnaround_promise}. Choose how you want to stay sharp.</p>
