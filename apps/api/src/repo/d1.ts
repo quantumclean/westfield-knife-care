@@ -1,5 +1,10 @@
 import type { AnalyticsEvent, Order, WaitlistEntry } from "@wkc/shared";
-import { OrderWriteConflict, type ListEventsOptions, type ListOrdersOptions, type Repository } from "./types.ts";
+import {
+  OrderWriteConflict,
+  type ListEventsOptions,
+  type ListOrdersOptions,
+  type Repository,
+} from "./types.ts";
 
 /** Structural D1 types keep the existing Node-only API build independent. */
 export interface D1Statement {

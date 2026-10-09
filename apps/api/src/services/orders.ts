@@ -221,28 +221,28 @@ async function markEarlierOrdersRepeated(deps: Deps, order: Order, now: string):
 /** Operator update from the field. Sets timestamps and derived metrics. */
 export async function updateOrder(deps: Deps, id: string, input: UpdateOrderInput): Promise<Order> {
   return retryOrderChange(async () => {
-  const order = await getOrder(deps, id);
-  const now = deps.now().toISOString();
+    const order = await getOrder(deps, id);
+    const now = deps.now().toISOString();
 
-  if (input.pickup_status && input.pickup_status !== order.pickup_status) {
-    order.pickup_status = input.pickup_status;
-    if (input.pickup_status === "picked_up") order.picked_up_at = now;
-  }
-  if (input.return_status && input.return_status !== order.return_status) {
-    order.return_status = input.return_status;
-    if (input.return_status === "returned") {
-      order.returned_at = now;
-      const start = order.picked_up_at ?? order.paid_at ?? order.created_at;
-      order.time_to_fulfill_hours = hoursBetween(start, now);
+    if (input.pickup_status && input.pickup_status !== order.pickup_status) {
+      order.pickup_status = input.pickup_status;
+      if (input.pickup_status === "picked_up") order.picked_up_at = now;
     }
-  }
-  if (input.repeat_intent) order.repeat_intent = input.repeat_intent;
-  if (input.notes !== undefined) order.notes = input.notes;
+    if (input.return_status && input.return_status !== order.return_status) {
+      order.return_status = input.return_status;
+      if (input.return_status === "returned") {
+        order.returned_at = now;
+        const start = order.picked_up_at ?? order.paid_at ?? order.created_at;
+        order.time_to_fulfill_hours = hoursBetween(start, now);
+      }
+    }
+    if (input.repeat_intent) order.repeat_intent = input.repeat_intent;
+    if (input.notes !== undefined) order.notes = input.notes;
 
-  order.updated_at = now;
-  await deps.repo.putOrder(order);
-  deps.log("order.updated", { order_id: order.id, ...input });
-  return order;
+    order.updated_at = now;
+    await deps.repo.putOrder(order);
+    deps.log("order.updated", { order_id: order.id, ...input });
+    return order;
   });
 }
 
@@ -253,15 +253,15 @@ export async function recordFeedback(
   input: OrderFeedbackInput,
 ): Promise<Order> {
   return retryOrderChange(async () => {
-  const order = await getOrder(deps, id);
-  if (order.payment_status !== "paid" && order.payment_status !== "refunded") {
-    throw new ValidationError(["order: feedback is only accepted for paid orders"]);
-  }
-  order.repeat_intent = input.repeat_intent;
-  order.updated_at = deps.now().toISOString();
-  await deps.repo.putOrder(order);
-  deps.log("order.feedback", { order_id: order.id, repeat_intent: order.repeat_intent });
-  return order;
+    const order = await getOrder(deps, id);
+    if (order.payment_status !== "paid" && order.payment_status !== "refunded") {
+      throw new ValidationError(["order: feedback is only accepted for paid orders"]);
+    }
+    order.repeat_intent = input.repeat_intent;
+    order.updated_at = deps.now().toISOString();
+    await deps.repo.putOrder(order);
+    deps.log("order.feedback", { order_id: order.id, repeat_intent: order.repeat_intent });
+    return order;
   });
 }
 

@@ -111,7 +111,8 @@ function byChannel(events: AnalyticsEvent[], paid: Order[]) {
 
 /** Net receipts account for Stripe's cumulative partial or full refunds. */
 function netRevenueCents(order: Order): number {
-  const refunded = order.refunded_amount_cents ??
+  const refunded =
+    order.refunded_amount_cents ??
     (order.payment_status === "refunded" ? order.quote.total_cents : 0);
   return Math.max(0, order.quote.total_cents - refunded);
 }

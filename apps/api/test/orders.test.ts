@@ -17,9 +17,8 @@ const webhook = (body: unknown) => {
     event.checkout_session_id = "cs_fake_" + orderId;
   }
   if (event.type === "checkout_completed") {
-    event.amount_cents ??= orderId === "id-0002" && event.test_price_version === "price-002"
-      ? 4900
-      : 3900;
+    event.amount_cents ??=
+      orderId === "id-0002" && event.test_price_version === "price-002" ? 4900 : 3900;
     event.payment_intent_id ??= "pi_" + suffix;
   }
   if (event.type === "refunded") {

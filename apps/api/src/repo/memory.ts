@@ -1,5 +1,10 @@
 import type { AnalyticsEvent, Order, WaitlistEntry } from "@wkc/shared";
-import { OrderWriteConflict, type ListEventsOptions, type ListOrdersOptions, type Repository } from "./types.ts";
+import {
+  OrderWriteConflict,
+  type ListEventsOptions,
+  type ListOrdersOptions,
+  type Repository,
+} from "./types.ts";
 
 const byCreatedDesc = <T extends { created_at: string }>(a: T, b: T) =>
   b.created_at.localeCompare(a.created_at);

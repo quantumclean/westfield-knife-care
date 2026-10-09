@@ -11,16 +11,9 @@ export interface CleanupBindings {
   };
 }
 export default {
-  async scheduled(
-    _event: unknown,
-    env: CleanupBindings,
-  ): Promise<void> {
+  async scheduled(_event: unknown, env: CleanupBindings): Promise<void> {
     const now = Math.floor(Date.now() / 1000);
-    await env.DB.prepare("DELETE FROM analytics_events WHERE expires_at <= ?")
-      .bind(now)
-      .run();
-    await env.DB.prepare("DELETE FROM api_rate_limits WHERE expires_at <= ?")
-      .bind(now)
-      .run();
+    await env.DB.prepare("DELETE FROM analytics_events WHERE expires_at <= ?").bind(now).run();
+    await env.DB.prepare("DELETE FROM api_rate_limits WHERE expires_at <= ?").bind(now).run();
   },
 };
