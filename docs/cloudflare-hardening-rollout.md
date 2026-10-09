@@ -50,9 +50,17 @@ The salt is used in the hash input; only hash values are stored.
 
 Deploy the **separate** staging Cron Worker only after reviewing the included
 config: `workers/cleanup/wrangler.jsonc` includes the staging database id.
+The config enables sampled Workers logs so a missed or failed cleanup can be
+diagnosed in staging.
 
 ```powershell
 npx --yes wrangler@latest deploy --config workers/cleanup/wrangler.jsonc
+```
+
+Before deployment, validate the bundle without changing Cloudflare state:
+
+```powershell
+npx --yes wrangler@latest deploy --dry-run --config workers/cleanup/wrangler.jsonc
 ```
 
 It removes expired analytics (>180 days) and short-lived rate-limit buckets.

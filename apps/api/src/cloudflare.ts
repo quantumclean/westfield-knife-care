@@ -69,9 +69,10 @@ export async function handlePagesApi(request: Request, env: PagesBindings): Prom
 
   try {
     const row = await env.DB.prepare(
-      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'orders'",
-    ).first<{ name: string }>();
-    if (!row) return unavailable("Booking database has not been initialized.");
+      "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' " +
+        "AND name IN ('orders', 'waitlist', 'analytics_events', 'api_rate_limits')",
+    ).first<{ count: number }>();
+    if (row?.count !== 4) return unavailable("Booking database has not been initialized.");
   } catch {
     return unavailable("Booking database is unavailable.");
   }

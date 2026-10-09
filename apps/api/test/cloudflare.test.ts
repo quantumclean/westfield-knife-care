@@ -5,7 +5,7 @@ const request = (path: string, method = "GET") =>
   new Request("https://preview.example.test" + path, { method });
 
 const db = {
-  prepare: () => ({ first: async () => ({ name: "orders" }) }),
+  prepare: () => ({ first: async () => ({ count: 4 }) }),
 } as unknown as NonNullable<PagesBindings["DB"]>;
 
 describe("Cloudflare staging payment readiness", () => {
@@ -19,6 +19,14 @@ describe("Cloudflare staging payment readiness", () => {
       prepare: () => ({ first: async () => null }),
     } as unknown as NonNullable<PagesBindings["DB"]>;
     const res = await handlePagesApi(request("/api/config"), { DB: missing });
+    expect(res.status).toBe(503);
+  });
+
+  it("rejects traffic until the rate-limit migration is present", async () => {
+    const incomplete = {
+      prepare: () => ({ first: async () => ({ count: 3 }) }),
+    } as unknown as NonNullable<PagesBindings["DB"]>;
+    const res = await handlePagesApi(request("/api/health"), { DB: incomplete });
     expect(res.status).toBe(503);
   });
 
@@ -60,6 +68,20 @@ describe("Cloudflare staging payment readiness", () => {
     const config = await handlePagesApi(request("/api/config"), env);
     const configBody = (await config.json()) as { payments_enabled: boolean };
     expect(configBody.payments_enabled).toBe(false);
+  });
+
+  it("enables staging payments only with the complete test-mode configuration", async () => {
+    const config = await handlePagesApi(request("/api/config"), {
+      DB: db,
+      STAGE: "staging",
+      SITE_URL: "https://preview.example.test",
+      STRIPE_SECRET_KEY: "sk_test_placeholder",
+      STRIPE_WEBHOOK_SECRET: "whsec_placeholder",
+    });
+    expect(config.status).toBe(200);
+    expect((await config.json()) as { payments_enabled: boolean }).toMatchObject({
+      payments_enabled: true,
+    });
   });
 
   it("rejects checkout if the configured origin does not match", async () => {
