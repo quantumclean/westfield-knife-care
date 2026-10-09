@@ -3,6 +3,12 @@
   "name": "westfield-knife-care-staging-cleanup",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-09",
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "head_sampling_rate": 1,
+    },
+  },
   "triggers": {
     "crons": ["0 4 * * *"],
   },
