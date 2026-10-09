@@ -165,6 +165,40 @@ describe("payment webhooks", () => {
     expect((await readJson(orphan)).order_id).toBeNull();
   });
 
+  it("does not mark an order paid when Stripe reports a different amount", async () => {
+    const { app, deps } = makeDeps();
+    await app.request("/api/orders", json("POST", validOrder));
+
+    const mismatch = await app.request(
+      "/api/webhooks/stripe",
+      webhook({
+        type: "checkout_completed",
+        order_id: "id-0001",
+        checkout_session_id: "cs_1",
+        payment_intent_id: "pi_1",
+        amount_cents: 100,
+      }),
+    );
+    expect(mismatch.status).toBe(500);
+    const pending = (await deps.repo.getOrder("id-0001"))!;
+    expect(pending.payment_status).toBe("pending");
+    expect(pending.paid_at).toBeUndefined();
+    expect(pending.stripe_payment_intent_id).toBeUndefined();
+
+    const correct = await app.request(
+      "/api/webhooks/stripe",
+      webhook({
+        type: "checkout_completed",
+        order_id: "id-0001",
+        checkout_session_id: "cs_1",
+        payment_intent_id: "pi_1",
+        amount_cents: 3900,
+      }),
+    );
+    expect(correct.status).toBe(200);
+    expect((await deps.repo.getOrder("id-0001"))!.payment_status).toBe("paid");
+  });
+
   it("rejects bad signatures", async () => {
     const { app } = makeDeps();
     const res = await app.request(
