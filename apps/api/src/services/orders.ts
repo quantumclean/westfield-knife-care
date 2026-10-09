@@ -131,6 +131,7 @@ export async function applyPaymentEvent(
       return undefined;
     }
     const now = deps.now().toISOString();
+    let earlierOrders: Order[] | undefined;
     switch (event.type) {
       case "checkout_completed": {
         if (order.payment_status !== "pending") return order;
@@ -152,6 +153,10 @@ export async function applyPaymentEvent(
         order.payment_status = "paid";
         order.paid_at = now;
         if (event.payment_intent_id) order.stripe_payment_intent_id = event.payment_intent_id;
+        // Read the customer's other orders now (read-only) so the repeat flag is saved
+        // together with the paid state; the other orders are updated after the write.
+        earlierOrders = await deps.repo.findOrdersByEmail(order.customer.email);
+        order.is_repeat_customer = hasEarlierPaidOrder(earlierOrders, order);
         break;
       }
       case "checkout_expired":
@@ -163,6 +168,13 @@ export async function applyPaymentEvent(
         order.payment_status = event.type === "checkout_expired" ? "expired" : "failed";
         break;
       case "refunded": {
+        if (order.payment_status === "pending") {
+          // The refund overtook the payment confirmation (a delayed or retried webhook).
+          // Acknowledging it would lose it for good, because Stripe will not send it again.
+          // Failing makes Stripe retry after the payment has been recorded.
+          deps.log("payment.refund_before_payment", { order_id: order.id });
+          throw new Error("Stripe refund arrived before the payment was confirmed");
+        }
         if (order.payment_status !== "paid" && order.payment_status !== "refunded") return order;
         if (
           !event.payment_intent_id ||
@@ -188,9 +200,9 @@ export async function applyPaymentEvent(
     }
     order.updated_at = now;
     await deps.repo.putOrder(order);
-    if (event.type === "checkout_completed") {
-      // Update repeat metrics after the primary paid state has safely persisted.
-      await markEarlierOrdersRepeated(deps, order, now);
+    if (event.type === "checkout_completed" && earlierOrders) {
+      // Update earlier orders' repeat metric after the primary paid state has safely persisted.
+      await markEarlierOrdersRepeated(deps, order, now, earlierOrders);
     }
     deps.log("order.payment_updated", { order_id: order.id, payment_status: order.payment_status });
     return order;
@@ -198,8 +210,12 @@ export async function applyPaymentEvent(
 }
 
 /** A paid order makes every earlier paid order by the same customer a "repeat purchase" success. */
-async function markEarlierOrdersRepeated(deps: Deps, order: Order, now: string): Promise<void> {
-  const earlier = await deps.repo.findOrdersByEmail(order.customer.email);
+async function markEarlierOrdersRepeated(
+  deps: Deps,
+  order: Order,
+  now: string,
+  earlier: Order[],
+): Promise<void> {
   for (const previous of earlier) {
     if (previous.id === order.id || previous.payment_status !== "paid") continue;
     if (previous.created_at >= order.created_at || previous.actual_repeat_purchase) continue;
@@ -213,7 +229,11 @@ async function markEarlierOrdersRepeated(deps: Deps, order: Order, now: string):
       deps.log("repeat.metric_conflict", { order_id: previous.id });
     }
   }
-  order.is_repeat_customer = earlier.some(
+}
+
+/** True when the same customer already had a paid order placed before this one. */
+function hasEarlierPaidOrder(others: Order[], order: Order): boolean {
+  return others.some(
     (o) => o.id !== order.id && o.payment_status === "paid" && o.created_at < order.created_at,
   );
 }

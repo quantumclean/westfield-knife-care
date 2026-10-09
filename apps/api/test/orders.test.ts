@@ -252,14 +252,15 @@ describe("payment webhooks", () => {
     expect(after.updated_at).toBe(refunded.updated_at);
   });
 
-  it("does not mark a pending order refunded without a confirmed payment", async () => {
+  it("does not mark a pending order refunded, and asks Stripe to retry the refund", async () => {
     const { app, deps } = makeDeps();
     await app.request("/api/orders", json("POST", validOrder));
     const refund = await app.request(
       "/api/webhooks/stripe",
       webhook({ type: "refunded", order_id: "id-0001", payment_intent_id: "pi_1" }),
     );
-    expect(refund.status).toBe(200);
+    // Not 2xx: a refund that outruns its payment confirmation must be retried by Stripe, not lost.
+    expect(refund.status).toBe(500);
     const order = (await deps.repo.getOrder("id-0001"))!;
     expect(order.payment_status).toBe("pending");
     expect(order.stripe_payment_intent_id).toBeUndefined();
