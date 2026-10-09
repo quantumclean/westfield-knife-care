@@ -11,7 +11,10 @@ describe("optimistic order persistence", () => {
     const { order } = await createOrder(deps, {
       ...validOrder,
       acquisition_channel: "print",
-      customer: { ...validOrder.customer, address: { ...validOrder.customer.address, line2: undefined } },
+      customer: {
+        ...validOrder.customer,
+        address: { ...validOrder.customer.address, line2: undefined },
+      },
       notes: undefined,
     });
     const first = (await deps.repo.getOrder(order.id))!;
