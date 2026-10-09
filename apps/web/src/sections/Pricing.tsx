@@ -24,7 +24,7 @@ export function Pricing({ experiment, onBook, onPilot }: PricingProps) {
                 <span class="muted"> for {price.knives_included} knives</span>
               </p>
               <p class="muted">
-                {offer.value_line} Extra knives{" "}
+                Review pickup and return arrangements when booking. Extra knives{" "}
                 {formatMoney(price.extra_knife_price_cents, price.currency)} each.
               </p>
               <Button onClick={onBook} arrow>
