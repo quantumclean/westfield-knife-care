@@ -6,6 +6,7 @@ import { BRAND, formatCareDay, formatMoney } from "@wkc/shared";
 import { Button, Logo, Notice } from "@wkc/ui";
 import { ApiError, api, type PublicOrder } from "./lib/api.ts";
 import { EVENTS, initAnalytics, track } from "./lib/analytics.ts";
+import { describeUnpaidStatus } from "./lib/order-status.ts";
 import { loadSession } from "./lib/session.ts";
 
 const session = loadSession();
@@ -89,6 +90,11 @@ function ThanksPage() {
   }
 
   const paid = order?.payment_status === "paid";
+  // Anything other than paid or pending is a terminal state that must not read like progress.
+  const unpaid =
+    order && !paid && order.payment_status !== "pending"
+      ? describeUnpaidStatus(order.payment_status, BRAND.support_email)
+      : undefined;
   const showFeedback =
     order &&
     paid &&
@@ -108,7 +114,9 @@ function ThanksPage() {
       {order && (
         <>
           <h1>
-            {paid ? `Thank you${order.first_name ? `, ${order.first_name}` : ""}!` : "Almost there"}
+            {paid
+              ? `Thank you${order.first_name ? `, ${order.first_name}` : ""}!`
+              : (unpaid?.heading ?? "Almost there")}
           </h1>
           {paid ? (
             <p role="status">
@@ -135,9 +143,7 @@ function ThanksPage() {
               Confirming your payment…
             </p>
           ) : (
-            <Notice tone="error">
-              This booking was not paid ({order.payment_status}). Start again from the home page.
-            </Notice>
+            <Notice tone="error">{unpaid?.message}</Notice>
           )}
           <dl class="summary">
             <dt>Order</dt>
