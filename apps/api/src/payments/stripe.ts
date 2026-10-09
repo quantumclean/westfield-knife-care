@@ -111,6 +111,7 @@ export function normaliseStripeEvent(event: Stripe.Event): PaymentEvent {
         checkout_session_id: session.id,
         payment_intent_id: stringId(session.payment_intent),
         amount_cents: session.amount_total ?? undefined,
+        currency: session.currency ?? undefined,
       };
     }
     case "checkout.session.expired": {
@@ -131,7 +132,13 @@ export function normaliseStripeEvent(event: Stripe.Event): PaymentEvent {
       const charge = event.data.object;
       const order_id = charge.metadata?.order_id;
       return order_id
-        ? { type: "refunded", order_id, payment_intent_id: stringId(charge.payment_intent) }
+        ? {
+            type: "refunded",
+            order_id,
+            payment_intent_id: stringId(charge.payment_intent),
+            original_amount_cents: charge.amount,
+            refunded_amount_cents: charge.amount_refunded,
+          }
         : { type: "ignored", provider_type: event.type };
     }
     default:
