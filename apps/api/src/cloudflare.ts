@@ -114,4 +114,3 @@ export async function handlePagesApi(request: Request, env: PagesBindings): Prom
     headers,
   });
 }
-
