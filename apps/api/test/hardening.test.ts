@@ -32,7 +32,7 @@ describe("optimistic order persistence", () => {
 describe("Cloudflare API write protection", () => {
   it("rejects public writes when the configured rate-limit secret is absent", async () => {
     const db = {
-      prepare: () => ({ first: async () => ({ name: "orders" }) }),
+      prepare: () => ({ first: async () => ({ count: 4 }) }),
     } as unknown as NonNullable<PagesBindings["DB"]>;
     const request = new Request("https://preview.example.test/api/waitlist", {
       method: "POST",
@@ -47,7 +47,7 @@ describe("Cloudflare API write protection", () => {
     const db = {
       prepare: (sql: string) =>
         sql.includes("sqlite_master")
-          ? { first: async () => ({ name: "orders" }) }
+          ? { first: async () => ({ count: 4 }) }
           : { bind: () => ({ first: async () => ({ hits: 6 }) }) },
     } as unknown as NonNullable<PagesBindings["DB"]>;
     const request = new Request("https://preview.example.test/api/waitlist", {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CreateOrderInput, Order } from "@wkc/shared";
-import { applyPaymentEvent, createOrder } from "../src/services/orders.ts";
+import { MemoryRepository } from "../src/repo/memory.ts";
+import { applyPaymentEvent, createOrder, recordFeedback } from "../src/services/orders.ts";
 import { WEBHOOK_SECRET, json, makeDeps, validOrder } from "./helpers.ts";
 
 const input = (over: Partial<CreateOrderInput> = {}): CreateOrderInput => ({
@@ -30,6 +31,29 @@ const refunded = (o: Order, cents: number) => ({
   original_amount_cents: o.quote.total_cents,
   refunded_amount_cents: cents,
 });
+
+class ReadBarrierRepository extends MemoryRepository {
+  private readsRemaining = 0;
+  private releaseReads: (() => void) | undefined;
+  private readsReleased: Promise<void> = Promise.resolve();
+
+  blockNextPairOfReads(): void {
+    this.readsRemaining = 2;
+    this.readsReleased = new Promise((resolve) => {
+      this.releaseReads = resolve;
+    });
+  }
+
+  override async getOrder(id: string): Promise<Order | undefined> {
+    const order = await super.getOrder(id);
+    if (this.readsRemaining > 0) {
+      this.readsRemaining--;
+      if (this.readsRemaining === 0) this.releaseReads?.();
+      await this.readsReleased;
+    }
+    return order;
+  }
+}
 
 describe("repeat-customer flag is saved with the paid state", () => {
   it("is true for a later order whose earlier sibling was paid first", async () => {
@@ -119,5 +143,39 @@ describe("a refund that outruns its payment confirmation", () => {
       applyPaymentEvent(deps, refunded(order, order.quote.total_cents)),
     ).resolves.toBeDefined();
     expect((await deps.repo.getOrder(order.id))!.payment_status).toBe("failed");
+  });
+});
+
+describe("Stripe payment state invariants", () => {
+  it("requires currency and a payment intent before recording payment", async () => {
+    const { deps } = makeDeps();
+    const { order } = await createOrder(deps, input());
+    const { currency: _currency, ...withoutCurrency } = completed(order);
+
+    await expect(applyPaymentEvent(deps, withoutCurrency)).rejects.toThrow(/currency/);
+    expect((await deps.repo.getOrder(order.id))!.payment_status).toBe("pending");
+
+    await expect(
+      applyPaymentEvent(deps, { ...completed(order), payment_intent_id: undefined }),
+    ).rejects.toThrow(/payment intent is missing/);
+    expect((await deps.repo.getOrder(order.id))!.payment_status).toBe("pending");
+  });
+
+  it("retries an overlapping refund and feedback write without losing either change", async () => {
+    const repo = new ReadBarrierRepository();
+    const { deps } = makeDeps({ repo });
+    const { order } = await createOrder(deps, input());
+    await applyPaymentEvent(deps, completed(order));
+
+    repo.blockNextPairOfReads();
+    await Promise.all([
+      applyPaymentEvent(deps, refunded(order, 1_000)),
+      recordFeedback(deps, order.id, { repeat_intent: "yes" }),
+    ]);
+
+    const stored = (await repo.getOrder(order.id))!;
+    expect(stored.payment_status).toBe("paid");
+    expect(stored.refunded_amount_cents).toBe(1_000);
+    expect(stored.repeat_intent).toBe("yes");
   });
 });

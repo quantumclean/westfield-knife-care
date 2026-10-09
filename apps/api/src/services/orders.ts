@@ -147,12 +147,15 @@ export async function applyPaymentEvent(
           });
           throw new Error("Stripe checkout amount does not match the order quote");
         }
-        if (event.currency !== undefined && event.currency !== order.quote.currency) {
+        if (event.currency !== order.quote.currency) {
           throw new Error("Stripe checkout currency does not match order");
+        }
+        if (!event.payment_intent_id) {
+          throw new Error("Stripe checkout payment intent is missing");
         }
         order.payment_status = "paid";
         order.paid_at = now;
-        if (event.payment_intent_id) order.stripe_payment_intent_id = event.payment_intent_id;
+        order.stripe_payment_intent_id = event.payment_intent_id;
         // Read the customer's other orders now (read-only) so the repeat flag is saved
         // together with the paid state; the other orders are updated after the write.
         earlierOrders = await deps.repo.findOrdersByEmail(order.customer.email);

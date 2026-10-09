@@ -5,5 +5,5 @@
     "types": ["node"],
     "allowImportingTsExtensions": true
   },
-  "include": ["src", "test", "build.mjs"]
+  "include": ["src", "test", "build.mjs", "../../workers/cleanup/src"]
 }

@@ -8,8 +8,9 @@ The Cloudflare Pages root must be the repository root and the build output is
 
 1. Run `npx --yes wrangler@latest d1 create westfield-knife-care-staging`.
 2. Record the returned database UUID (not a secret).
-3. Once this branch is available locally, run:
-   `npx --yes wrangler@latest d1 execute westfield-knife-care-staging --remote --file migrations/0001_wkc_d1.sql`.
+3. Once this branch is available locally, apply both tracked migrations in order:
+   `npx --yes wrangler@latest d1 execute westfield-knife-care-staging --remote --file migrations/0001_wkc_d1.sql`,
+   then the corresponding command for `migrations/0002_rate_limits.sql`.
 4. In Cloudflare Pages project Settings > Bindings, add a Preview **D1 database**
    binding named `DB` to `westfield-knife-care-staging`. Redeploy Preview.
 5. In Settings > Functions > Compatibility flags, enable `nodejs_compat`
@@ -20,6 +21,8 @@ The Cloudflare Pages root must be the repository root and the build output is
 7. Set test-only runtime secrets STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET
    only after the staging backend is reviewed. Do NOT use `VITE_` prefixes.
 8. Configure a distinct, random ADMIN_API_KEY for each environment.
+9. Configure a Preview secret named `RATE_LIMIT_SALT` with at least 32 random
+   bytes. The API deliberately returns 503 for protected writes without it.
 
 Production must use a SEPARATE D1 database and `STAGE=production`; production
 requires a live-mode Stripe key and a matching configured HTTPS site origin.
@@ -37,11 +40,13 @@ Never share D1 bindings between Preview and Production.
 ## Launch blockers
 
 - No production release without full Pages runtime and Stripe test validation.
-- Existing order writes are last-write-wins; concurrent webhooks still need
-  reconciliation and stronger deduplication before live use.
-- Add rate limiting and operational access control to `/api/*` and `/api/admin/*`.
-- Establish customer data retention/deletion, monitoring, backups, and
-  scheduled analytics expiry cleanup before production.
+- Exercise optimistic-lock retries with the real staging D1 database under
+  concurrent webhook, admin and feedback writes. Stripe event-id deduplication
+  and an operator reconciliation procedure are still not implemented.
+- Confirm application rate limits with real Preview traffic, then add the
+  dashboard-managed WAF and Cloudflare Access policies before production.
+- Deploy and observe the staging-only retention Worker. Customer order and
+  waitlist retention/deletion rules and backup procedures remain undecided.
 - Review support-email DNS, privacy notices and business policies.
 
 Cloudflare Pages does NOT inherit CloudFront API routing. The Pages Function
