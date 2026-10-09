@@ -1,5 +1,5 @@
 import type { AnalyticsEvent, Order, WaitlistEntry } from "@wkc/shared";
-import type { ListEventsOptions, ListOrdersOptions, Repository } from "./types.ts";
+import { OrderWriteConflict, type ListEventsOptions, type ListOrdersOptions, type Repository } from "./types.ts";
 
 const byCreatedDesc = <T extends { created_at: string }>(a: T, b: T) =>
   b.created_at.localeCompare(a.created_at);
@@ -11,6 +11,11 @@ export class MemoryRepository implements Repository {
   private events = new Map<string, AnalyticsEvent>();
 
   async putOrder(order: Order): Promise<void> {
+    const stored = this.orders.get(order.id);
+    if (!stored && order.revision !== undefined) throw new OrderWriteConflict("Order vanished");
+    if (stored && stored.revision !== order.revision)
+      throw new OrderWriteConflict("Order changed during update");
+    order.revision = (stored?.revision ?? 0) + 1;
     this.orders.set(order.id, structuredClone(order));
   }
 
