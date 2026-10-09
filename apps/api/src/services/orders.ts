@@ -122,17 +122,21 @@ export async function applyPaymentEvent(
   switch (event.type) {
     case "checkout_completed": {
       if (order.payment_status === "paid") return order;
-      order.payment_status = "paid";
-      order.paid_at = now;
-      order.stripe_checkout_session_id = event.checkout_session_id;
-      if (event.payment_intent_id) order.stripe_payment_intent_id = event.payment_intent_id;
+      // Never confirm an order if Stripe reports an unexpected total.
+      // Throwing returns a non-2xx webhook response so Stripe retries while
+      // the mismatch is investigated; no payment state or repeat metrics change.
       if (event.amount_cents !== undefined && event.amount_cents !== order.quote.total_cents) {
         deps.log("payment.amount_mismatch", {
           order_id: order.id,
           expected: order.quote.total_cents,
           received: event.amount_cents,
         });
+        throw new Error("Stripe checkout amount does not match the order quote");
       }
+      order.payment_status = "paid";
+      order.paid_at = now;
+      order.stripe_checkout_session_id = event.checkout_session_id;
+      if (event.payment_intent_id) order.stripe_payment_intent_id = event.payment_intent_id;
       await markEarlierOrdersRepeated(deps, order, now);
       break;
     }
