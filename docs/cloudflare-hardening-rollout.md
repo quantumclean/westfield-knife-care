@@ -34,6 +34,7 @@ fail closed without the salt or Cloudflare's connecting-IP header. Re-deploy
 Preview after binding the secret.
 
 Staging rate limits per salted IP hash, in a UTC-minute bucket:
+
 - POST /api/orders: 5 requests/minute
 - POST /api/waitlist: 5 requests/minute
 - POST /api/events: 120 requests/minute
@@ -61,6 +62,7 @@ deletion and backup rules before production.
 ## 4. Required payment verification
 
 Using Stripe **test mode**, exercise:
+
 - Matching checkout session id, currency, server-calculated quote
 - Missing amount/session mismatch -> 500 (retry), no paid order
 - Full and cumulative partial refunds with payment-intent ownership verified

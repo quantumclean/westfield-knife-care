@@ -4,13 +4,13 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-09",
   "triggers": {
-    "crons": ["0 4 * * *"]
+    "crons": ["0 4 * * *"],
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "westfield-knife-care-staging",
-      "database_id": "974fe23d-0552-4443-9fcd-ce241db6e664"
-    }
-  ]
+      "database_id": "974fe23d-0552-4443-9fcd-ce241db6e664",
+    },
+  ],
 }
