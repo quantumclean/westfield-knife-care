@@ -28,6 +28,16 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Temporary diagnostic (formatter and downstream checks)
+        run: |
+          for file in apps/api/src/repo/d1.ts apps/api/src/repo/memory.ts apps/api/src/services/orders.ts apps/api/src/services/summary.ts apps/api/test/orders.test.ts workers/cleanup/src/index.ts; do
+            echo "FORMATTED_START:$file"
+            pnpm exec prettier "$file" | base64 -w0
+            printf '\nFORMATTED_END\n'
+          done
+          pnpm typecheck || true
+          pnpm test || true
+
       - run: pnpm lint
 
       - run: pnpm typecheck
