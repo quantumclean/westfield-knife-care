@@ -193,5 +193,8 @@ aws cloudfront create-invalidation --distribution-id $(terraform output -raw clo
 - **Secrets** live in SSM Parameter Store, loaded once per cold start.
 - **Data retention**: analytics events expire after 180 days (DynamoDB TTL);
   orders and signups are kept. Point-in-time recovery is on.
-- Replace `apps/web/public/images/hero.svg` with real photography before
-  printing flyers; see the README in that folder.
+- **Look and feel** ("Workshop paper"): tokens and components in
+  `packages/ui/src/styles.css`, inked art in `apps/web/src/art/`, and the
+  hero's fruit-slicing toy in `apps/web/src/toy/` (decorative, lazy, off for
+  reduced motion). Booking is a two-step sheet in
+  `apps/web/src/forms/BookingForm.tsx`.

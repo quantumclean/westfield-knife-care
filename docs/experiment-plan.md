@@ -125,6 +125,11 @@ as proving one. Phase 2 continues the winner against a new challenger.
 
 ## Weekly review
 
+> From the booking UX v2 release (see the exception in
+> `docs/launch-freeze.md`), report each arm's funnel separately before and
+> after the deploy timestamp. Both arms changed together, so the arm
+> comparison holds within each period; levels across periods do not.
+
 Every Monday, run `GET /api/admin/summary` (see `docs/operations.md`), paste
 the table into the tracking sheet, and answer three questions: which arm is
 ahead, what broke operationally, what did customers say. Update this file

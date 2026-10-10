@@ -4,56 +4,31 @@ import { EVENTS, track } from "../lib/analytics.ts";
 
 /**
  * The 23-second launch film (source: marketing/launch-video): "Dull.",
- * "Sharp.", a pickup line, a return line, logo. The return line is a
- * turnaround promise, so each offer gets the cut that repeats its own
- * promise and nothing else; an offer without a cut shows no video rather
- * than one that could contradict it or confound the A/B test.
+ * "Sharp.", "Picked up at your door.", "Back on your doorstep.", logo.
+ * One cut for every visitor: it shows no price and makes no timing promise,
+ * so it says the same thing in both experiment arms.
  *
- * Files are versioned because the deploy caches non-HTML assets as
- * immutable; a re-render must ship under a new VERSION.
+ * Nothing but the poster loads until the film is half on screen.
+ * Files are versioned so a re-render never collides with a cached copy.
  */
-const VERSION = "v1";
-type Cut = "a" | "b";
+const VERSION = "v2";
 type Format = "landscape" | "square";
 
-const VIDEO_BY_OFFER: Record<string, Cut> = {
-  "offer-001": "a", // "Back at your door within 48 hours"
-  "offer-002": "b", // "Back at your door the next day"
-};
+const file = (format: Format, suffix: string) => `/video/launch-${format}-${VERSION}${suffix}`;
 
-const file = (cut: Cut, format: Format, suffix: string) =>
-  `/video/launch-${cut}-${format}-${VERSION}${suffix}`;
-
-const LINES: Record<Cut, { pickup: string; back: string; backScene: string }> = {
-  a: {
-    pickup: "Picked up at home.",
-    back: "Back within 48 hours.",
-    backScene: "The bag is back on the doormat.",
-  },
-  b: {
-    pickup: "Picked up today.",
-    back: "Back tomorrow.",
-    backScene: "The next day, the bag is back on the doormat.",
-  },
-};
-
-function transcript(cut: Cut): string[] {
-  const l = LINES[cut];
-  return [
-    "Dull. A dull knife drags across a tomato and crushes it.",
-    "Sharp. A sharp knife goes through it in one stroke; clean slices fan out.",
-    `${l.pickup} A bag of knives is picked up from a front doorstep.`,
-    `${l.back} ${l.backScene}`,
-    "Westfield Knife Care. Sharpen My Knives. sharp.usabiology.com",
-  ];
-}
+const TRANSCRIPT = [
+  "Dull. A dull knife drags across a tomato and crushes it.",
+  "Sharp. A sharp knife goes through it in one stroke; clean slices fan out.",
+  "Picked up at your door. A bag of knives is picked up from a front doorstep.",
+  "Back on your doorstep. The bag is back on the doormat.",
+  "Westfield Knife Care. Sharpen My Knives. sharp.usabiology.com",
+];
 
 function prefersReducedMotion(): boolean {
   return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-export function LaunchVideo({ offerId }: { offerId: string }) {
-  const cut = VIDEO_BY_OFFER[offerId];
+export function LaunchVideo() {
   const ref = useRef<HTMLVideoElement>(null);
   const reduced = useMemo(prefersReducedMotion, []);
   const format = useMemo<Format>(
@@ -72,10 +47,10 @@ export function LaunchVideo({ offerId }: { offerId: string }) {
   const markViewed = (trigger: string) => {
     if (viewed.current) return;
     viewed.current = true;
-    track(EVENTS.video_view, { trigger, cut, format });
+    track(EVENTS.video_view, { trigger, format });
   };
 
-  // Autoplay (muted) only while at least half the video is on screen.
+  // Autoplay (muted) only while at least half the film is on screen.
   useEffect(() => {
     const video = ref.current;
     if (!video || reduced || userPaused || typeof IntersectionObserver === "undefined") return;
@@ -95,9 +70,7 @@ export function LaunchVideo({ offerId }: { offerId: string }) {
     io.observe(video);
     return () => io.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reduced, userPaused, cut]);
-
-  if (!cut) return null;
+  }, [reduced, userPaused]);
 
   const togglePlay = () => {
     const video = ref.current;
@@ -124,7 +97,7 @@ export function LaunchVideo({ offerId }: { offerId: string }) {
       }
       if (!unmuted.current) {
         unmuted.current = true;
-        track(EVENTS.video_unmute, { cut, format, at_seconds: Math.round(video.currentTime) });
+        track(EVENTS.video_unmute, { format, at_seconds: Math.round(video.currentTime) });
       }
     }
   };
@@ -137,15 +110,15 @@ export function LaunchVideo({ offerId }: { offerId: string }) {
           muted={muted}
           loop
           playsInline
-          preload="metadata"
-          poster={file(cut, format, "-poster.jpg")}
-          aria-label={`Westfield Knife Care: dull, sharp. ${LINES[cut].pickup} ${LINES[cut].back}`}
+          preload="none"
+          poster={file(format, "-poster.jpg")}
+          aria-label="Westfield Knife Care: dull, sharp. Picked up at your door. Back on your doorstep."
           aria-describedby="video-transcript"
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
         >
-          <source src={file(cut, format, ".webm")} type="video/webm" />
-          <source src={file(cut, format, ".mp4")} type="video/mp4" />
+          <source src={file(format, ".webm")} type="video/webm" />
+          <source src={file(format, ".mp4")} type="video/mp4" />
         </video>
         {!playing && (
           <button type="button" class="video-play" onClick={togglePlay} aria-label="Play video">
@@ -163,7 +136,7 @@ export function LaunchVideo({ offerId }: { offerId: string }) {
       </div>
       <details class="video-transcript" id="video-transcript">
         <summary>What's in the video</summary>
-        {transcript(cut).map((line) => (
+        {TRANSCRIPT.map((line) => (
           <p key={line}>{line}</p>
         ))}
       </details>

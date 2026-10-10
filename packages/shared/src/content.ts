@@ -49,7 +49,8 @@ export const FAQ = [
   {
     id: "turnaround",
     question: "How long does it take?",
-    answer: "The turnaround for your booking is shown on this page and in the booking form.",
+    answer:
+      "You choose the pickup day when you book, and we collect between 8am and 12pm. Return timing is confirmed separately for each booking.",
   },
   {
     id: "always-sharp",

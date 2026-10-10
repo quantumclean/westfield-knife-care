@@ -6,6 +6,20 @@ v1 is merged and tagged. Until experiment-001 and experiment-002 conclude
 (see the decision rules in `docs/experiment-plan.md`), changes to this
 repository are limited to what's needed to keep the pilot running:
 
+## Exception: booking UX v2 (owner decision, 2026-10-10)
+
+The owner chose to ship the "Workshop paper" redesign and the two-step
+booking sheet during the freeze, to **both arms on the same day**. What
+differs between the arms (price version, offer CTA) is untouched, so the
+A-vs-B comparison stays fair; what changes is the level of the funnel for
+both. Analyses should therefore split at the production deploy of the PR
+that ships it (record the timestamp below when it goes live) and compare
+arms within each period, not across it.
+
+- Shipped: _deploy timestamp to be filled in on release_
+- What changed: see `docs/proposals/phase-2-booking-ux.md` (items 1, 5 and
+  6 are now implemented) and the PR description.
+
 ## In scope during the freeze
 
 - **Launch-blocking bugs**: anything that stops a real visitor from
