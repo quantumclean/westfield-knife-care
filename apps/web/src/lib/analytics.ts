@@ -1,10 +1,24 @@
 import { EVENTS, type EventName } from "@wkc/shared";
 import { API_BASE } from "./api.ts";
+import { withoutFeedbackToken } from "./feedback-token.ts";
 import { sessionContext, type Session } from "./session.ts";
 
 type Props = Record<string, string | number | boolean>;
 
 let session: Session | undefined;
+
+/**
+ * The page URL as analytics is allowed to see it: never carries the feedback token. GA4 would
+ * otherwise default `page_location` to the full URL, so we set it explicitly everywhere. This is a
+ * belt-and-braces guard; the thank-you page already strips `ft` from the URL before we run.
+ */
+export function safePageLocation(): string {
+  try {
+    return withoutFeedbackToken(window.location.href);
+  } catch {
+    return window.location.origin + window.location.pathname;
+  }
+}
 
 /** Load GA4 (if configured) and remember the session for every event. */
 export function initAnalytics(current: Session): void {
@@ -19,6 +33,7 @@ export function initAnalytics(current: Session): void {
   window.gtag("js", new Date());
   window.gtag("config", id, {
     send_page_view: false,
+    page_location: safePageLocation(),
     experiment_id: current.experiment.experiment.id,
     offer_version: current.experiment.offer.id,
     price_version: current.experiment.price.id,
@@ -43,6 +58,8 @@ export function track(name: EventName, props: Props = {}): void {
     ...context,
     offer_version: session.experiment.offer.id,
     price_version: session.experiment.price.id,
+    // Pin page_location so GA4 never falls back to the raw URL (which could still carry ?ft=).
+    page_location: safePageLocation(),
     ...props,
   };
   window.gtag?.("event", name, payload);

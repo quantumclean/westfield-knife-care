@@ -12,6 +12,7 @@ export interface StripeGatewayOptions {
   webhook_secret?: string;
   /** Minutes before an unpaid Checkout session expires (Stripe minimum 30). */
   session_ttl_minutes?: number;
+  runtime?: "node" | "worker";
 }
 
 /**
@@ -22,9 +23,16 @@ export class StripeGateway implements PaymentGateway {
   private readonly stripe: Stripe;
   private readonly webhookSecret: string | undefined;
   private readonly ttlMinutes: number;
+  private readonly runtime: "node" | "worker";
 
   constructor(options: StripeGatewayOptions) {
-    this.stripe = new Stripe(options.secret_key);
+    this.runtime = options.runtime ?? "node";
+    this.stripe =
+      this.runtime === "worker"
+        ? new Stripe(options.secret_key, {
+            httpClient: Stripe.createFetchHttpClient(),
+          })
+        : new Stripe(options.secret_key);
     this.webhookSecret = options.webhook_secret;
     this.ttlMinutes = Math.max(30, options.session_ttl_minutes ?? 60);
   }
@@ -78,6 +86,8 @@ export class StripeGateway implements PaymentGateway {
         rawBody,
         signature,
         this.webhookSecret,
+        undefined,
+        this.runtime === "worker" ? Stripe.createSubtleCryptoProvider() : undefined,
       );
     } catch (error) {
       throw new WebhookVerificationError((error as Error).message);
@@ -101,6 +111,7 @@ export function normaliseStripeEvent(event: Stripe.Event): PaymentEvent {
         checkout_session_id: session.id,
         payment_intent_id: stringId(session.payment_intent),
         amount_cents: session.amount_total ?? undefined,
+        currency: session.currency ?? undefined,
       };
     }
     case "checkout.session.expired": {
@@ -121,7 +132,13 @@ export function normaliseStripeEvent(event: Stripe.Event): PaymentEvent {
       const charge = event.data.object;
       const order_id = charge.metadata?.order_id;
       return order_id
-        ? { type: "refunded", order_id, payment_intent_id: stringId(charge.payment_intent) }
+        ? {
+            type: "refunded",
+            order_id,
+            payment_intent_id: stringId(charge.payment_intent),
+            original_amount_cents: charge.amount,
+            refunded_amount_cents: charge.amount_refunded,
+          }
         : { type: "ignored", provider_type: event.type };
     }
     default:

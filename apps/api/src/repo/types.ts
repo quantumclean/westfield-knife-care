@@ -10,6 +10,11 @@ export interface ListEventsOptions {
   limit?: number;
 }
 
+/** Explicit conflict: caller must reload and retry a read-modify-write. */
+export class OrderWriteConflict extends Error {
+  override name = "OrderWriteConflict";
+}
+
 /**
  * Persistence boundary. Implementations: MemoryRepository (tests, local dev)
  * and DynamoRepository (production).

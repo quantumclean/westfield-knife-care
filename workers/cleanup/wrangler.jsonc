@@ -1,0 +1,22 @@
+{
+  "$schema": "https://unpkg.com/wrangler@4/config-schema.json",
+  "name": "westfield-knife-care-staging-cleanup",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-09",
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "head_sampling_rate": 1,
+    },
+  },
+  "triggers": {
+    "crons": ["0 4 * * *"],
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "westfield-knife-care-staging",
+      "database_id": "974fe23d-0552-4443-9fcd-ce241db6e664",
+    },
+  ],
+}

@@ -7,37 +7,31 @@ export const BRAND = {
   short_name: "Westfield",
   tagline: "Local service. No shipping. Real people.",
   service_area: "Westfield",
-  support_email: "hello@sharp.usabiology.com",
+  support_email: "sales@usabiology.com",
 } as const;
 
 export const HOW_IT_WORKS = [
   {
     step: 1,
     title: "We pick up",
-    body: "Schedule a pickup at your home or office in Westfield.",
+    body: "Schedule a pickup at your address in Westfield.",
     icon: "truck",
   },
   {
     step: 2,
     title: "We sharpen",
-    body: "Professional sharpening by hand or precision equipment.",
+    body: "We sharpen your knives.",
     icon: "knife",
   },
   {
     step: 3,
     title: "We return",
-    body: "Fast turnaround, back to your doorstep.",
+    body: "Back to your doorstep.",
     icon: "home",
   },
 ] as const;
 
-export const WHY_US = [
-  "Local, no shipping",
-  "Fast turnaround",
-  "Trusted, professional sharpening",
-  "Safer, better cooking",
-  "Support a local business",
-] as const;
+export const WHY_US = ["Local, no shipping", "Support a local business"] as const;
 
 export const FAQ = [
   {
@@ -50,13 +44,12 @@ export const FAQ = [
     id: "how-to-pack",
     question: "How should I hand over my knives?",
     answer:
-      "Wrap each blade in a kitchen towel or cardboard sleeve and leave them in a bag at your door on your care day. We bring a lockable knife roll for the trip.",
+      "Wrap each blade in a kitchen towel or cardboard sleeve and leave them in a bag at your door on your care day.",
   },
   {
     id: "turnaround",
     question: "How long does it take?",
-    answer:
-      "Most orders are back the next day, and always within the turnaround promised when you booked. You get a text when they are on the way.",
+    answer: "The turnaround for your booking is shown on this page and in the booking form.",
   },
   {
     id: "always-sharp",
@@ -67,8 +60,7 @@ export const FAQ = [
   {
     id: "payment",
     question: "How do I pay?",
-    answer:
-      "Securely by card through Stripe when you book. You are only charged once the booking is confirmed, and we refund in full if we cannot pick up on your chosen day.",
+    answer: "Securely by card through Stripe when you book.",
   },
   {
     id: "area",

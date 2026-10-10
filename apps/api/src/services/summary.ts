@@ -47,7 +47,7 @@ export async function buildSummary(deps: Deps, since?: string): Promise<Summary>
     const expEvents = events.filter((e) => e.experiment_id === experiment.id);
     const funnel = uniqueVisitorsByStep(expEvents);
     const views = funnel.page_view ?? 0;
-    const revenue = paid.reduce((sum, o) => sum + o.quote.total_cents, 0);
+    const revenue = paid.reduce((sum, o) => sum + netRevenueCents(o), 0);
     const fulfilled = paid.filter((o) => o.time_to_fulfill_hours !== undefined);
 
     return {
@@ -104,9 +104,17 @@ function byChannel(events: AnalyticsEvent[], paid: Order[]) {
   for (const o of paid) {
     const b = bucket(o.acquisition_channel);
     b.paid += 1;
-    b.revenue_cents += o.quote.total_cents;
+    b.revenue_cents += netRevenueCents(o);
   }
   return result;
+}
+
+/** Net receipts account for Stripe's cumulative partial or full refunds. */
+function netRevenueCents(order: Order): number {
+  const refunded =
+    order.refunded_amount_cents ??
+    (order.payment_status === "refunded" ? order.quote.total_cents : 0);
+  return Math.max(0, order.quote.total_cents - refunded);
 }
 
 function countBy<T>(items: T[], key: (item: T) => string): Record<string, number> {

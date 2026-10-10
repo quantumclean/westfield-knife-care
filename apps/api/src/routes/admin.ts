@@ -1,7 +1,8 @@
-import { timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
 import { formatIssues, updateOrderSchema } from "@wkc/shared";
 import type { Deps } from "../deps.ts";
+import { BODY_LIMITS, readJsonBody } from "../services/request-body.ts";
+import { safeEqual } from "../services/safe-equal.ts";
 import { updateOrder } from "../services/orders.ts";
 import { buildSummary } from "../services/summary.ts";
 
@@ -33,7 +34,9 @@ export function adminRoutes(deps: Deps) {
   });
 
   app.patch("/orders/:id", async (c) => {
-    const parsed = updateOrderSchema.safeParse(await c.req.json().catch(() => ({})));
+    const body = await readJsonBody(c.req.raw, BODY_LIMITS.adminPatch);
+    if (!body.ok) return c.json({ error: body.error }, body.status);
+    const parsed = updateOrderSchema.safeParse(body.value);
     if (!parsed.success)
       return c.json({ error: "invalid_request", issues: formatIssues(parsed.error) }, 400);
     const order = await updateOrder(deps, c.req.param("id"), parsed.data);
@@ -55,10 +58,4 @@ export function adminRoutes(deps: Deps) {
   app.get("/summary", async (c) => c.json(await buildSummary(deps, c.req.query("since"))));
 
   return app;
-}
-
-function safeEqual(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  return bufA.length === bufB.length && timingSafeEqual(bufA, bufB);
 }

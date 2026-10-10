@@ -78,7 +78,14 @@ describe("POST /api/events and GET /api/admin/summary", () => {
       "/api/webhooks/stripe",
       json(
         "POST",
-        { type: "checkout_completed", order_id: created.order_id, checkout_session_id: "cs_1" },
+        {
+          type: "checkout_completed",
+          order_id: created.order_id,
+          checkout_session_id: "cs_fake_" + created.order_id,
+          payment_intent_id: "pi_1",
+          amount_cents: 3900,
+          currency: "usd",
+        },
         { "stripe-signature": WEBHOOK_SECRET },
       ),
     );

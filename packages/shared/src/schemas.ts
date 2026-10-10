@@ -119,6 +119,8 @@ export type UpdateOrderInput = z.infer<typeof updateOrderSchema>;
 /** Customer-submitted feedback from the thank-you page or a follow-up link. */
 export const orderFeedbackSchema = z.object({
   repeat_intent: z.enum(REPEAT_INTENTS.filter((v) => v !== "unknown") as ["yes", "maybe", "no"]),
+  /** The order's `feedback_token`, delivered in the success URL or the operator's follow-up link. */
+  token: z.string().min(1).max(200),
 });
 export type OrderFeedbackInput = z.infer<typeof orderFeedbackSchema>;
 

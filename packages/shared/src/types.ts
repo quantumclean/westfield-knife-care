@@ -127,6 +127,13 @@ export interface Order {
   id: string;
   created_at: string;
   updated_at: string;
+  /** Internal optimistic-concurrency marker, never exposed in public order views. */
+  revision?: number;
+  /**
+   * Random secret that authorizes the customer's one-time feedback answer. Delivered only in
+   * the Stripe success URL and the operator's follow-up link; never in a public order view.
+   */
+  feedback_token?: string;
 
   customer: Customer;
 
@@ -167,6 +174,8 @@ export interface Order {
   /** Payment provider references. */
   stripe_checkout_session_id?: string;
   stripe_payment_intent_id?: string;
+  /** Cumulative amount returned to the customer (partial and full refunds). */
+  refunded_amount_cents?: number;
 }
 
 export const SERVICE_INTERESTS = ["sharpening", "always_sharp", "both"] as const;

@@ -339,3 +339,11 @@
 .video-transcript p {
   margin: 0.5rem 0 0;
 }
+
+/* Booking unavailable (fail-closed) state */
+.booking-closed {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: start;
+  margin-bottom: 1rem;
+}

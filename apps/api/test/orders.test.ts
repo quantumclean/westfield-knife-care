@@ -1,7 +1,34 @@
 import { describe, expect, it } from "vitest";
 import { ADMIN_KEY, WEBHOOK_SECRET, json, makeDeps, readJson, validOrder } from "./helpers.ts";
 
-const webhook = (body: unknown) => json("POST", body, { "stripe-signature": WEBHOOK_SECRET });
+const webhook = (body: unknown) => {
+  if (!body || typeof body !== "object" || !("type" in body)) {
+    return json("POST", body, { "stripe-signature": WEBHOOK_SECRET });
+  }
+  // Fake test gateway events must reference the Stripe session actually
+  // created for each order. Strict production matching rejects other sessions.
+  const event = { ...body } as Record<string, unknown>;
+  const orderId = String(event.order_id ?? "id-0001");
+  const suffix = orderId === "id-0002" ? "2" : "1";
+  if (
+    typeof event.checkout_session_id === "string" &&
+    event.checkout_session_id === "cs_" + suffix
+  ) {
+    event.checkout_session_id = "cs_fake_" + orderId;
+  }
+  if (event.type === "checkout_completed") {
+    event.amount_cents ??=
+      orderId === "id-0002" && event.test_price_version === "price-002" ? 4900 : 3900;
+    event.payment_intent_id ??= "pi_" + suffix;
+    event.currency ??= "usd";
+  }
+  if (event.type === "refunded") {
+    event.original_amount_cents ??= 3900;
+    event.refunded_amount_cents ??= 3900;
+  }
+  delete event.test_price_version;
+  return json("POST", event, { "stripe-signature": WEBHOOK_SECRET });
+};
 const admin = (method: string, body?: unknown) =>
   body === undefined
     ? { method, headers: { "x-admin-key": ADMIN_KEY } }
@@ -165,6 +192,138 @@ describe("payment webhooks", () => {
     expect((await readJson(orphan)).order_id).toBeNull();
   });
 
+  it("does not mark an order paid when Stripe reports a different amount", async () => {
+    const { app, deps } = makeDeps();
+    await app.request("/api/orders", json("POST", validOrder));
+
+    const mismatch = await app.request(
+      "/api/webhooks/stripe",
+      webhook({
+        type: "checkout_completed",
+        order_id: "id-0001",
+        checkout_session_id: "cs_1",
+        payment_intent_id: "pi_1",
+        amount_cents: 100,
+      }),
+    );
+    expect(mismatch.status).toBe(500);
+    const pending = (await deps.repo.getOrder("id-0001"))!;
+    expect(pending.payment_status).toBe("pending");
+    expect(pending.paid_at).toBeUndefined();
+    expect(pending.stripe_payment_intent_id).toBeUndefined();
+
+    const correct = await app.request(
+      "/api/webhooks/stripe",
+      webhook({
+        type: "checkout_completed",
+        order_id: "id-0001",
+        checkout_session_id: "cs_1",
+        payment_intent_id: "pi_1",
+        amount_cents: 3900,
+      }),
+    );
+    expect(correct.status).toBe(200);
+    expect((await deps.repo.getOrder("id-0001"))!.payment_status).toBe("paid");
+  });
+
+  it("never turns a refunded order back to paid on replayed checkout completion", async () => {
+    const { app, deps } = makeDeps();
+    await app.request("/api/orders", json("POST", validOrder));
+
+    const completed = {
+      type: "checkout_completed",
+      order_id: "id-0001",
+      checkout_session_id: "cs_1",
+      payment_intent_id: "pi_1",
+      amount_cents: 3900,
+    };
+    expect((await app.request("/api/webhooks/stripe", webhook(completed))).status).toBe(200);
+    const refund = await app.request(
+      "/api/webhooks/stripe",
+      webhook({ type: "refunded", order_id: "id-0001", payment_intent_id: "pi_1" }),
+    );
+    expect(refund.status).toBe(200);
+    const refunded = (await deps.repo.getOrder("id-0001"))!;
+    expect(refunded.payment_status).toBe("refunded");
+    const replay = await app.request("/api/webhooks/stripe", webhook(completed));
+    expect(replay.status).toBe(200);
+    const after = (await deps.repo.getOrder("id-0001"))!;
+    expect(after.payment_status).toBe("refunded");
+    expect(after.paid_at).toBe(refunded.paid_at);
+    expect(after.updated_at).toBe(refunded.updated_at);
+  });
+
+  it("does not mark a pending order refunded, and asks Stripe to retry the refund", async () => {
+    const { app, deps } = makeDeps();
+    await app.request("/api/orders", json("POST", validOrder));
+    const refund = await app.request(
+      "/api/webhooks/stripe",
+      webhook({ type: "refunded", order_id: "id-0001", payment_intent_id: "pi_1" }),
+    );
+    // Not 2xx: a refund that outruns its payment confirmation must be retried by Stripe, not lost.
+    expect(refund.status).toBe(500);
+    const order = (await deps.repo.getOrder("id-0001"))!;
+    expect(order.payment_status).toBe("pending");
+    expect(order.stripe_payment_intent_id).toBeUndefined();
+  });
+
+  it("does not confirm a payment from a different Checkout session", async () => {
+    const { app, deps } = makeDeps();
+    await app.request("/api/orders", json("POST", validOrder));
+    const response = await app.request(
+      "/api/webhooks/stripe",
+      webhook({
+        type: "checkout_completed",
+        order_id: "id-0001",
+        checkout_session_id: "cs_unrelated",
+        payment_intent_id: "pi_1",
+        amount_cents: 3900,
+      }),
+    );
+    expect(response.status).toBe(500);
+    expect((await deps.repo.getOrder("id-0001"))!.payment_status).toBe("pending");
+  });
+
+  it("handles partial and then full refunds without falsely marking partial as fully refunded", async () => {
+    const { app, deps } = makeDeps();
+    await app.request("/api/orders", json("POST", validOrder));
+    await app.request(
+      "/api/webhooks/stripe",
+      webhook({
+        type: "checkout_completed",
+        order_id: "id-0001",
+        checkout_session_id: "cs_1",
+        payment_intent_id: "pi_1",
+      }),
+    );
+    await app.request(
+      "/api/webhooks/stripe",
+      webhook({
+        type: "refunded",
+        order_id: "id-0001",
+        payment_intent_id: "pi_1",
+        original_amount_cents: 3900,
+        refunded_amount_cents: 1500,
+      }),
+    );
+    const partial = (await deps.repo.getOrder("id-0001"))!;
+    expect(partial.payment_status).toBe("paid");
+    expect(partial.refunded_amount_cents).toBe(1500);
+    await app.request(
+      "/api/webhooks/stripe",
+      webhook({
+        type: "refunded",
+        order_id: "id-0001",
+        payment_intent_id: "pi_1",
+        original_amount_cents: 3900,
+        refunded_amount_cents: 3900,
+      }),
+    );
+    const complete = (await deps.repo.getOrder("id-0001"))!;
+    expect(complete.payment_status).toBe("refunded");
+    expect(complete.refunded_amount_cents).toBe(3900);
+  });
+
   it("rejects bad signatures", async () => {
     const { app } = makeDeps();
     const res = await app.request(
@@ -194,31 +353,21 @@ describe("GET /api/orders/:id", () => {
 });
 
 describe("POST /api/orders/:id/feedback", () => {
-  it("records repeat intent for paid orders only", async () => {
-    const { app } = makeDeps();
+  it("records repeat intent for paid orders only (authorization: see feedback-auth.test.ts)", async () => {
+    const { app, deps } = makeDeps();
     await app.request("/api/orders", json("POST", validOrder));
-    expect(
-      (await app.request("/api/orders/id-0001/feedback", json("POST", { repeat_intent: "yes" })))
-        .status,
-    ).toBe(400);
+    const token = (await deps.repo.getOrder("id-0001"))!.feedback_token;
+    const send = (body: Record<string, unknown>) =>
+      app.request("/api/orders/id-0001/feedback", json("POST", { token, ...body }));
+    expect((await send({ repeat_intent: "yes" })).status).toBe(400);
     await app.request(
       "/api/webhooks/stripe",
       webhook({ type: "checkout_completed", order_id: "id-0001", checkout_session_id: "cs_1" }),
     );
-    const res = await app.request(
-      "/api/orders/id-0001/feedback",
-      json("POST", { repeat_intent: "maybe" }),
-    );
+    expect((await send({ repeat_intent: "unknown" })).status).toBe(400);
+    const res = await send({ repeat_intent: "maybe" });
     expect(res.status).toBe(200);
     expect((await readJson(res)).repeat_intent).toBe("maybe");
-    expect(
-      (
-        await app.request(
-          "/api/orders/id-0001/feedback",
-          json("POST", { repeat_intent: "unknown" }),
-        )
-      ).status,
-    ).toBe(400);
   });
 });
 

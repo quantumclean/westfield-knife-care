@@ -5,7 +5,12 @@ import type { Deps } from "./deps.ts";
 import { adminRoutes } from "./routes/admin.ts";
 import { publicRoutes } from "./routes/public.ts";
 import { webhookRoutes } from "./routes/webhooks.ts";
-import { NotFoundError, ValidationError } from "./services/errors.ts";
+import {
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from "./services/errors.ts";
 
 /**
  * Builds the HTTP app. Routes are mounted under `/api` so the same code
@@ -32,6 +37,8 @@ export function createApp(deps: Deps) {
   app.onError((error, c) => {
     if (error instanceof ValidationError)
       return c.json({ error: "invalid_request", issues: error.issues }, 400);
+    if (error instanceof ForbiddenError) return c.json({ error: "forbidden" }, 403);
+    if (error instanceof ConflictError) return c.json({ error: "already_recorded" }, 409);
     if (error instanceof NotFoundError) return c.json({ error: "not_found" }, 404);
     deps.log("request.error", { path: c.req.path, message: error.message, stack: error.stack });
     return c.json({ error: "internal_error" }, 500);
