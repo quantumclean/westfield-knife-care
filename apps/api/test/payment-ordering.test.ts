@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CreateOrderInput, Order } from "@wkc/shared";
 import { MemoryRepository } from "../src/repo/memory.ts";
+import { OrderWriteConflict } from "../src/repo/types.ts";
 import { applyPaymentEvent, createOrder, recordFeedback } from "../src/services/orders.ts";
 import { WEBHOOK_SECRET, json, makeDeps, validOrder } from "./helpers.ts";
 
@@ -33,6 +34,7 @@ const refunded = (o: Order, cents: number) => ({
 });
 
 class ReadBarrierRepository extends MemoryRepository {
+  conflicts = 0;
   private readsRemaining = 0;
   private releaseReads: (() => void) | undefined;
   private readsReleased: Promise<void> = Promise.resolve();
@@ -52,6 +54,15 @@ class ReadBarrierRepository extends MemoryRepository {
       await this.readsReleased;
     }
     return order;
+  }
+
+  override async putOrder(order: Order): Promise<void> {
+    try {
+      await super.putOrder(order);
+    } catch (error) {
+      if (error instanceof OrderWriteConflict) this.conflicts++;
+      throw error;
+    }
   }
 }
 
@@ -172,7 +183,7 @@ describe("Stripe payment state invariants", () => {
       applyPaymentEvent(deps, refunded(order, 1_000)),
       recordFeedback(deps, order.id, {
         repeat_intent: "yes",
-        token: (await repo.getOrder(order.id))!.feedback_token!,
+        token: order.feedback_token!,
       }),
     ]);
 
@@ -180,5 +191,31 @@ describe("Stripe payment state invariants", () => {
     expect(stored.payment_status).toBe("paid");
     expect(stored.refunded_amount_cents).toBe(1_000);
     expect(stored.repeat_intent).toBe("yes");
+    expect(repo.conflicts).toBe(1);
+  });
+
+  it("accepts only one of two simultaneous feedback answers", async () => {
+    const repo = new ReadBarrierRepository();
+    const { app, deps } = makeDeps({ repo });
+    const { order } = await createOrder(deps, input());
+    await applyPaymentEvent(deps, completed(order));
+
+    repo.blockNextPairOfReads();
+    const answers = ["yes", "no"] as const;
+    const responses = await Promise.all(
+      answers.map((repeat_intent) =>
+        app.request(
+          `/api/orders/${order.id}/feedback`,
+          json("POST", { repeat_intent, token: order.feedback_token! }),
+        ),
+      ),
+    );
+
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+    const winner = responses.findIndex((response) => response.status === 200);
+    const loser = responses.find((response) => response.status === 409)!;
+    expect(await loser.json()).toEqual({ error: "already_recorded" });
+    expect((await repo.getOrder(order.id))!.repeat_intent).toBe(answers[winner]);
+    expect(repo.conflicts).toBe(1);
   });
 });
