@@ -55,7 +55,9 @@ export function LaunchVideo() {
     if (!video || reduced || userPaused || typeof IntersectionObserver === "undefined") return;
     const io = new IntersectionObserver(
       ([entry]) => {
-        if (entry?.isIntersecting) {
+        // isIntersecting is true for any sliver on screen (including the first
+        // callback), so check the actual ratio against the 50% threshold.
+        if (entry && entry.intersectionRatio >= 0.5) {
           video
             .play()
             .then(() => markViewed("autoplay"))

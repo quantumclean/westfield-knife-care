@@ -1,6 +1,6 @@
 import type { ComponentType } from "preact";
 import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
-import { Modal } from "@wkc/ui";
+import { Button, Modal, Notice } from "@wkc/ui";
 import type { BookingDialogProps } from "./forms/BookingForm.tsx";
 import { EVENTS, track } from "./lib/analytics.ts";
 import { resolveAvailability } from "./lib/booking.ts";
@@ -31,33 +31,49 @@ export function App({ session }: { session: Session }) {
   const [dialog, setDialog] = useState<Dialog>("none");
   const [Booking, setBooking] = useState<ComponentType<BookingDialogProps> | null>(null);
   const [Pilot, setPilot] = useState<PilotFormComponent | null>(null);
+  // A lazily loaded form that failed to arrive (offline, deploy mid-visit):
+  // say so and offer a retry instead of a button that seems to do nothing.
+  const [loadFailed, setLoadFailed] = useState<"none" | "book" | "pilot">("none");
   const resumed = useMemo(
     () => new URLSearchParams(window.location.search).get("cancelled") === "1",
     [],
   );
 
-  const prefetchBooking = useCallback(() => {
+  const prefetchBooking = useCallback((reportFailure = false) => {
     loadBooking()
-      .then((m) => setBooking(() => m.BookingDialog))
+      .then((m) => {
+        setBooking(() => m.BookingDialog);
+        setLoadFailed("none");
+      })
       .catch(() => {
         bookingModule = undefined; // let the next intent retry
+        if (reportFailure) setLoadFailed("book");
       });
   }, []);
+  // Intent and idle prefetches stay quiet; only an explicit open reports failure.
+  const prefetchQuietly = useCallback(() => prefetchBooking(false), [prefetchBooking]);
+  const loadPilotForm = () => {
+    loadPilot()
+      .then((m) => {
+        setPilot(() => m.PilotForm);
+        setLoadFailed("none");
+      })
+      .catch(() => {
+        pilotModule = undefined;
+        setLoadFailed("pilot");
+      });
+  };
 
   const openBooking = (location: string, countAsClick = true) => {
     if (countAsClick) track(EVENTS.cta_click, { cta: "sharpen", location });
     track(EVENTS.booking_opened, { location });
-    prefetchBooking();
+    prefetchBooking(true);
     setDialog("book");
   };
   const openPilot = (location: string) => {
     track(EVENTS.cta_click, { cta: "pilot", location });
     track(EVENTS.pilot_opened, { location });
-    loadPilot()
-      .then((m) => setPilot(() => m.PilotForm))
-      .catch(() => {
-        pilotModule = undefined;
-      });
+    loadPilotForm();
     setDialog("pilot");
   };
 
@@ -75,8 +91,8 @@ export function App({ session }: { session: Session }) {
 
     const idle =
       typeof requestIdleCallback === "function"
-        ? requestIdleCallback(prefetchBooking, { timeout: 4000 })
-        : window.setTimeout(prefetchBooking, 2500);
+        ? requestIdleCallback(prefetchQuietly, { timeout: 4000 })
+        : window.setTimeout(prefetchQuietly, 2500);
     return () => {
       window.removeEventListener("hashchange", fromHash);
       if (typeof cancelIdleCallback === "function") cancelIdleCallback(idle);
@@ -104,7 +120,7 @@ export function App({ session }: { session: Session }) {
       <Header
         ctaLabel={experiment.offer.cta_primary}
         onBook={() => openBooking("nav")}
-        onIntent={prefetchBooking}
+        onIntent={prefetchQuietly}
       />
       <main id="main-content" tabIndex={-1}>
         <Hero
@@ -113,7 +129,7 @@ export function App({ session }: { session: Session }) {
           nextPickup={nextPickup}
           onBook={() => openBooking("hero")}
           onPilot={() => openPilot("hero")}
-          onIntent={prefetchBooking}
+          onIntent={prefetchQuietly}
         />
         <HowItWorks>
           <LaunchVideo />
@@ -131,10 +147,10 @@ export function App({ session }: { session: Session }) {
         price={experiment.price}
         hidden={dialog !== "none"}
         onBook={() => openBooking("sticky")}
-        onIntent={prefetchBooking}
+        onIntent={prefetchQuietly}
       />
 
-      {Booking && (
+      {Booking ? (
         <Booking
           open={dialog === "book"}
           onClose={close}
@@ -144,10 +160,53 @@ export function App({ session }: { session: Session }) {
           onRetryConfig={retry}
           resumed={resumed}
         />
+      ) : (
+        <Modal
+          open={dialog === "book"}
+          variant="sheet"
+          title={experiment.offer.cta_primary}
+          onClose={close}
+        >
+          <LoadState failed={loadFailed === "book"} reopen="book" />
+        </Modal>
       )}
       <Modal open={dialog === "pilot"} title="Join the Always Sharp Pilot" onClose={close}>
-        {Pilot ? <Pilot session={session} /> : <p class="muted">Loading…</p>}
+        {Pilot ? (
+          <Pilot session={session} />
+        ) : (
+          <LoadState failed={loadFailed === "pilot"} reopen="pilot" />
+        )}
       </Modal>
     </>
+  );
+}
+
+/**
+ * Shown in a dialog while its form downloads, or if the download failed.
+ * Browsers remember a failed dynamic import, so retrying in place cannot
+ * succeed; reload straight back into the dialog through its deep link.
+ */
+function LoadState({ failed, reopen }: { failed: boolean; reopen: "book" | "pilot" }) {
+  if (!failed)
+    return (
+      <p class="muted" role="status">
+        Loading…
+      </p>
+    );
+  return (
+    <div class="booking-closed">
+      <Notice tone="error">
+        This form could not be loaded. Check your connection and try again.
+      </Notice>
+      <Button
+        variant="secondary"
+        onClick={() => {
+          window.location.hash = reopen;
+          window.location.reload();
+        }}
+      >
+        Try again
+      </Button>
+    </div>
   );
 }
