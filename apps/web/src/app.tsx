@@ -51,7 +51,7 @@ export function App({ session }: { session: Session }) {
   return (
     <>
       <Header ctaLabel={experiment.offer.cta_primary} onBook={() => openBooking("nav")} />
-      <main>
+      <main id="main-content" tabIndex={-1}>
         {cancelled && (
           <div class="container banner">
             <Notice>
@@ -62,6 +62,7 @@ export function App({ session }: { session: Session }) {
         )}
         <Hero
           offer={experiment.offer}
+          price={experiment.price}
           onBook={() => openBooking("hero")}
           onPilot={() => openPilot("hero")}
         />

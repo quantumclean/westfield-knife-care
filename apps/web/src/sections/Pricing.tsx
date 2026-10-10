@@ -13,7 +13,8 @@ export function Pricing({ experiment, onBook, onPilot }: PricingProps) {
     <Section id="pricing" tone="muted">
       <div class="pricing-grid">
         <div>
-          <h2>Simple Pricing</h2>
+          <p class="eyebrow">A fresh edge, a clear price</p>
+          <h2>A little care goes a long way.</h2>
           <div class="pricing-cards">
             <Card>
               <h3>{offer.cta_primary}</h3>
