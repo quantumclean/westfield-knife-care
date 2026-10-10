@@ -1,6 +1,6 @@
 import { createApp } from "./app.ts";
 import type { Config } from "./config.ts";
-import { jsonLog, newId, type Deps } from "./deps.ts";
+import { jsonLog, newId, newToken, type Deps } from "./deps.ts";
 import { StripeGateway } from "./payments/stripe.ts";
 import { WebhookVerificationError, type PaymentGateway } from "./payments/types.ts";
 import { D1Repository, type D1Database } from "./repo/d1.ts";
@@ -152,6 +152,7 @@ export async function handlePagesApi(request: Request, env: PagesBindings): Prom
       : new DisabledPayments(),
     now: () => new Date(),
     newId,
+    newToken,
     log: jsonLog,
   };
 

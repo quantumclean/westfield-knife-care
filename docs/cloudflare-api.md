@@ -40,6 +40,9 @@ Never share D1 bindings between Preview and Production.
 ## Launch blockers
 
 - No production release without full Pages runtime and Stripe test validation.
+- Customer feedback is authorized by a per-order `feedback_token` (success URL and
+  operator follow-up link only). Orders created before it was introduced cannot
+  receive customer feedback; the operator records it via admin `PATCH`.
 - Exercise optimistic-lock retries with the real staging D1 database under
   concurrent webhook, admin and feedback writes. Stripe event-id deduplication
   and an operator reconciliation procedure are still not implemented.
@@ -51,3 +54,30 @@ Never share D1 bindings between Preview and Production.
 
 Cloudflare Pages does NOT inherit CloudFront API routing. The Pages Function
 is intentionally used instead of a static `/api` route. AWS Terraform is not used.
+
+## Feedback token exposure (`ft=`)
+
+The per-order `feedback_token` is a bearer secret that travels in the Stripe success URL
+(`/thanks?order=<id>&ft=<token>&session_id=...`) and the operator's follow-up link.
+
+Mitigations in place:
+
+- `thanks.tsx` reads and validates `ft` first, before the session loads or any analytics
+  runs, and removes it from the address bar with `history.replaceState`. The token is kept
+  in memory only and sent in the feedback POST body, never in a URL.
+- GA4 `page_location` is set explicitly to the URL without `ft` (config and every event);
+  first-party `/events` records only `location.pathname`.
+- `thanks.html` sets `<meta name="referrer" content="same-origin">`, so no third party
+  receives a Referer for the thank-you document. Cloudflare Pages' default response policy
+  is `strict-origin-when-cross-origin`.
+
+Remaining limitations (not code-fixable here):
+
+- The token is in the URL until the page script runs: it appears in Stripe's redirect
+  (Stripe dashboard/logs of the configured success URL), Cloudflare Pages/edge request logs,
+  and any browser history entry created _before_ the rewrite (the replaced entry is
+  rewritten, but synced-history or extensions may have captured the original).
+- An SMS/email follow-up link containing `ft` is as private as that channel.
+- Anyone with the token can answer once (write-once); the operator corrects via admin
+  `PATCH`. The token grants no read access to the order beyond the existing public view.
+- Cloudflare Web Analytics or any other tag added later must be checked for URL capture.

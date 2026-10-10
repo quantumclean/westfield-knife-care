@@ -129,6 +129,11 @@ export interface Order {
   updated_at: string;
   /** Internal optimistic-concurrency marker, never exposed in public order views. */
   revision?: number;
+  /**
+   * Random secret that authorizes the customer's one-time feedback answer. Delivered only in
+   * the Stripe success URL and the operator's follow-up link; never in a public order view.
+   */
+  feedback_token?: string;
 
   customer: Customer;
 

@@ -45,8 +45,13 @@ follow-up text with the feedback link:
 
 ```
 Your knives are back at your door. Would you use Westfield Knife Care again?
-https://sharp.example.com/thanks?order=<id>&feedback=1
+https://sharp.example.com/thanks?order=<id>&feedback=1&ft=<feedback_token>
 ```
+
+Get `<feedback_token>` from `GET "$API/admin/orders/<id>"` (field `feedback_token`).
+Feedback requires this per-order secret; the order id alone is not enough, and a
+customer can answer only once (use `PATCH` to correct a recorded answer). Orders
+created before the token existed have none; record their answer with `PATCH`.
 
 The customer's answer lands in `repeat_intent`. If they tell you in person
 or by text instead:

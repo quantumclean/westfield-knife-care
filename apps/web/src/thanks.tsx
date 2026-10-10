@@ -7,7 +7,12 @@ import { Button, Logo, Notice } from "@wkc/ui";
 import { ApiError, api, type PublicOrder } from "./lib/api.ts";
 import { EVENTS, initAnalytics, track } from "./lib/analytics.ts";
 import { describeUnpaidStatus } from "./lib/order-status.ts";
+import { takeFeedbackToken } from "./lib/feedback-token.ts";
 import { loadSession } from "./lib/session.ts";
+
+// Must run before any analytics: strip the bearer token from the URL so it never reaches GA4,
+// our first-party /events, page_location, a history entry or a later Referer. Kept in memory only.
+const feedbackToken = takeFeedbackToken(window.location, window.history);
 
 const session = loadSession();
 initAnalytics(session);
@@ -80,9 +85,9 @@ function ThanksPage() {
   }, [order]);
 
   async function sendFeedback(repeat_intent: "yes" | "maybe" | "no") {
-    if (!order) return;
+    if (!order || !feedbackToken) return;
     try {
-      setOrder(await api.sendFeedback(order.id, repeat_intent));
+      setOrder(await api.sendFeedback(order.id, repeat_intent, feedbackToken));
       setFeedbackSent(true);
     } catch {
       setError("We could not save your answer, but thank you anyway.");
@@ -98,6 +103,7 @@ function ThanksPage() {
   const showFeedback =
     order &&
     paid &&
+    feedbackToken &&
     !feedbackSent &&
     order.repeat_intent === "unknown" &&
     (askFeedback || order.return_status === "returned");

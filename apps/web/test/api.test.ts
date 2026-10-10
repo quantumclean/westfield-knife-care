@@ -132,6 +132,34 @@ describe("api client", () => {
     });
   });
 
+  it("sends the feedback token in the body, never in the URL", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            id: "o1",
+            first_name: "A",
+            payment_status: "paid",
+            pickup_status: "scheduled",
+            return_status: "pending",
+            number_of_knives: 4,
+            care_day: "2026-10-13",
+            total_cents: 3900,
+            repeat_intent: "yes",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await api.sendFeedback("o1", "yes", "secret-token");
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).not.toContain("secret-token");
+    expect(JSON.parse(init.body as string)).toEqual({
+      repeat_intent: "yes",
+      token: "secret-token",
+    });
+  });
+
   it("rejects an order body that lacks the fields the thank-you page reads", async () => {
     respond(JSON.stringify({}));
     expect((await failure(api.getOrder("abc"))).kind).toBe("invalid_response");

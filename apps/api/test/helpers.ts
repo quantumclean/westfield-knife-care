@@ -9,6 +9,7 @@ export const ADMIN_KEY = "test-admin-key";
 
 export function makeDeps(overrides: Partial<Deps> = {}) {
   let counter = 0;
+  let tokenCounter = 0;
   const clock = { now: new Date("2026-09-24T15:00:00Z") };
   const deps: Deps = {
     config: configFromEnv({ SITE_URL: "https://sharp.example.com", ADMIN_API_KEY: ADMIN_KEY }),
@@ -16,6 +17,7 @@ export function makeDeps(overrides: Partial<Deps> = {}) {
     payments: new FakePaymentGateway(WEBHOOK_SECRET),
     now: () => new Date(clock.now),
     newId: () => `id-${String(++counter).padStart(4, "0")}`,
+    newToken: () => `ft-${String(++tokenCounter).padStart(4, "0")}`,
     log: () => {},
     ...overrides,
   };

@@ -155,11 +155,15 @@ export const api = {
   },
   getOrder: async (id: string): Promise<PublicOrder> =>
     assertPublicOrder(await request<unknown>(`/orders/${encodeURIComponent(id)}`)),
-  sendFeedback: async (id: string, repeat_intent: "yes" | "maybe" | "no"): Promise<PublicOrder> =>
+  sendFeedback: async (
+    id: string,
+    repeat_intent: "yes" | "maybe" | "no",
+    token: string,
+  ): Promise<PublicOrder> =>
     assertPublicOrder(
       await request<unknown>(`/orders/${encodeURIComponent(id)}/feedback`, {
         method: "POST",
-        body: JSON.stringify({ repeat_intent }),
+        body: JSON.stringify({ repeat_intent, token }),
       }),
     ),
   joinWaitlist: async (input: CreateWaitlistInput): Promise<{ id: string }> => {
