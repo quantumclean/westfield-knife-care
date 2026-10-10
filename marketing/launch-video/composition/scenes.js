@@ -11,8 +11,8 @@
 // must be a pure function of time: no real clocks, no randomness outside the
 // seeded PRNG, no work in callbacks.
 //
-// ?cut=a|b picks the pickup/return lines, which must match the offer the
-// visitor is shown (cues.json "cuts"); visuals are identical across cuts.
+// One cut for every visitor: the pickup and return lines (cues.json "copy")
+// make no timing promise, so they hold for every experiment arm.
 import * as art from "./art.js";
 
 /* global gsap, SplitText, DrawSVGPlugin */
@@ -24,14 +24,14 @@ const SQ = MODE === "square";
 document.body.classList.add(MODE);
 
 const cues = await (await fetch("/cues.json")).json();
-const CUT = cues.cuts[params.get("cut")] ? params.get("cut") : "b";
-const COPY = cues.cuts[CUT];
+const COPY = cues.copy;
 const FPS = cues.fps;
 const DURATION = cues.duration;
 const rand = art.mulberry32(20260925);
 const rr = (a, b) => a + rand() * (b - a);
 
-await document.fonts.load(`760 100px "Inter Variable"`);
+await document.fonts.load(`400 100px "Instrument Serif"`);
+await document.fonts.load(`600 40px "Inter Variable"`);
 await document.fonts.ready;
 
 const stage = document.getElementById("stage");
@@ -176,8 +176,8 @@ Object.assign(edgeSvg.style, {
 });
 edgeSvg.setAttribute("viewBox", `0 0 ${edgeW} 8`);
 edgeSvg.innerHTML = `<defs><linearGradient id="edge-g" x1="0" y1="0" x2="1" y2="0">
-  <stop offset="0" stop-color="#ffffff" stop-opacity="0"/><stop offset="0.35" stop-color="#ffffff"/>
-  <stop offset="0.8" stop-color="#caeea3"/><stop offset="1" stop-color="#9ccc6e" stop-opacity="0"/>
+  <stop offset="0" stop-color="#1e2721" stop-opacity="0"/><stop offset="0.35" stop-color="#1e2721"/>
+  <stop offset="0.8" stop-color="#bf3f27"/><stop offset="1" stop-color="#bf3f27" stop-opacity="0"/>
 </linearGradient></defs>
 <line x1="0" y1="4" x2="${edgeW}" y2="4" stroke="url(#edge-g)" stroke-width="3" stroke-linecap="round"/>`;
 
@@ -527,5 +527,5 @@ function seek(t) {
   for (const u of updaters) u(t);
 }
 seek(0);
-window.__video = { mode: MODE, cut: CUT, fps: FPS, duration: DURATION, width: W, height: H, seek };
+window.__video = { mode: MODE, fps: FPS, duration: DURATION, width: W, height: H, seek };
 document.body.dataset.ready = "1";

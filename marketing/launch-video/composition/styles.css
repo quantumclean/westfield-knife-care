@@ -1,4 +1,20 @@
 @font-face {
+  font-family: "Instrument Serif";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url("/node_modules/@fontsource/instrument-serif/files/instrument-serif-latin-400-normal.woff2")
+    format("woff2");
+}
+@font-face {
+  font-family: "Instrument Serif";
+  font-style: italic;
+  font-weight: 400;
+  font-display: block;
+  src: url("/node_modules/@fontsource/instrument-serif/files/instrument-serif-latin-400-italic.woff2")
+    format("woff2");
+}
+@font-face {
   font-family: "Inter Variable";
   font-style: normal;
   font-weight: 100 900;
@@ -8,10 +24,10 @@
 }
 
 :root {
-  --black: #040605;
-  --white: #f5f7f2;
-  --gray: #8d948f;
-  --lime: #9ccc6e;
+  --black: #f4eee2;
+  --white: #1e2721;
+  --gray: #9a9c92;
+  --lime: #1f4d34;
   --green: #1f4d34;
   --ink: #111814;
   --sans: "Inter Variable", system-ui, sans-serif;
@@ -19,14 +35,14 @@
 body.landscape {
   --W: 1920px;
   --H: 1080px;
-  --fs-beat: 230px;
-  --fs-line: 150px;
+  --fs-beat: 290px;
+  --fs-line: 172px;
 }
 body.square {
   --W: 1080px;
   --H: 1080px;
-  --fs-beat: 190px;
-  --fs-line: 118px;
+  --fs-beat: 240px;
+  --fs-line: 136px;
 }
 
 * {
@@ -36,7 +52,7 @@ body.square {
 }
 html,
 body {
-  background: #000;
+  background: #f4eee2;
   overflow: hidden;
 }
 body {
@@ -62,7 +78,7 @@ body {
   opacity: 0;
 }
 #vignette {
-  background: radial-gradient(85% 85% at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.7) 100%);
+  background: radial-gradient(85% 85% at 50% 50%, transparent 55%, rgba(120, 88, 45, 0.22) 100%);
   z-index: 30;
 }
 #grain {
@@ -77,7 +93,7 @@ body {
   width: 1500px;
   height: 1100px;
   border-radius: 50%;
-  background: radial-gradient(closest-side, rgba(255, 246, 232, 0.16), rgba(255, 246, 232, 0) 100%);
+  background: radial-gradient(closest-side, rgba(242, 201, 76, 0.2), rgba(242, 201, 76, 0) 100%);
   opacity: 0;
 }
 body.landscape .spot {
@@ -94,8 +110,9 @@ body.square .spot {
 /* ---------- Words ---------- */
 .word {
   position: absolute;
-  font-weight: 760;
-  letter-spacing: -0.055em;
+  font-family: "Instrument Serif", Georgia, serif;
+  font-weight: 400;
+  letter-spacing: -0.012em;
   line-height: 0.95;
   white-space: nowrap;
 }
@@ -135,11 +152,11 @@ body.square .word {
 .word.sharp .ln > span {
   background: linear-gradient(
     100deg,
-    #ffffff 0%,
-    #ffffff 42%,
-    #caeea3 50%,
-    #ffffff 58%,
-    #ffffff 100%
+    #1e2721 0%,
+    #1e2721 42%,
+    #bf3f27 50%,
+    #1e2721 58%,
+    #1e2721 100%
   );
   background-size: 300% 100%;
   background-position: 100% 0;
@@ -228,7 +245,7 @@ body.square .kitchen {
   aspect-ratio: 9 / 10;
   border-radius: 28px;
   overflow: hidden;
-  box-shadow: 0 60px 140px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 40px 100px rgba(60, 40, 15, 0.28);
 }
 body.landscape .doorway {
   right: 150px;
@@ -293,13 +310,14 @@ body.square .doorway {
   filter: drop-shadow(0 24px 70px rgba(156, 204, 110, 0.3));
 }
 .end .name {
-  font-size: 96px;
-  font-weight: 780;
-  letter-spacing: -0.05em;
+  font-size: 124px;
+  font-family: "Instrument Serif", Georgia, serif;
+  font-weight: 400;
+  letter-spacing: -0.01em;
   line-height: 1;
 }
 body.square .end .name {
-  font-size: 80px;
+  font-size: 100px;
   max-width: 800px;
   line-height: 1.02;
 }
@@ -320,7 +338,7 @@ body.square .end .cta {
   padding: 22px 40px;
   border-radius: 999px;
   background: var(--lime);
-  color: var(--ink);
+  color: #f4eee2;
   font-size: 40px;
   font-weight: 760;
   letter-spacing: -0.02em;
@@ -332,6 +350,6 @@ body.square .end .cta {
 .end .url {
   font-size: 40px;
   font-weight: 600;
-  color: rgba(245, 247, 242, 0.72);
+  color: #575e57;
   letter-spacing: -0.01em;
 }

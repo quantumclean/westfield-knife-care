@@ -1,7 +1,7 @@
 // Tiny static server for the composition. Everything it serves is local
 // (the composition, node_modules, cues.json), so a render never
 // touches the network. Run directly to preview in a browser:
-//   node serve.mjs   ->  http://127.0.0.1:4173/composition/?mode=landscape&cut=b
+//   node serve.mjs   ->  http://127.0.0.1:4173/composition/?mode=landscape
 import http from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
@@ -48,8 +48,6 @@ export async function startServer(port = 4173) {
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const port = Number(process.env.PORT ?? 4173);
   await startServer(port);
-  for (const cut of ["a", "b"]) {
-    console.log(`http://127.0.0.1:${port}/composition/?mode=landscape&cut=${cut}`);
-    console.log(`http://127.0.0.1:${port}/composition/?mode=square&cut=${cut}`);
-  }
+  console.log(`http://127.0.0.1:${port}/composition/?mode=landscape`);
+  console.log(`http://127.0.0.1:${port}/composition/?mode=square`);
 }

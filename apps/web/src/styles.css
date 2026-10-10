@@ -729,7 +729,7 @@
   box-shadow: 0 -3px 0 #0003 inset;
 }
 .chip:has(input:checked) small {
-  color: var(--lemon);
+  color: light-dark(var(--lemon), var(--on-forest));
 }
 .chip:has(input:active) span {
   transform: scale(0.96);
