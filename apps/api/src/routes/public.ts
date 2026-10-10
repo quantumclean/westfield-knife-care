@@ -14,6 +14,7 @@ import {
   type WaitlistEntry,
 } from "@wkc/shared";
 import type { Deps } from "../deps.ts";
+import { BODY_LIMITS, readJsonBody } from "../services/request-body.ts";
 import { createOrder, getOrder, publicOrderView, recordFeedback } from "../services/orders.ts";
 
 export function publicRoutes(deps: Deps) {
@@ -36,7 +37,9 @@ export function publicRoutes(deps: Deps) {
   );
 
   app.post("/orders", async (c) => {
-    const parsed = createOrderSchema.safeParse(await c.req.json().catch(() => ({})));
+    const body = await readJsonBody(c.req.raw, BODY_LIMITS.order);
+    if (!body.ok) return c.json({ error: body.error }, body.status);
+    const parsed = createOrderSchema.safeParse(body.value);
     if (!parsed.success)
       return c.json({ error: "invalid_request", issues: formatIssues(parsed.error) }, 400);
     const { order, checkout_url } = await createOrder(deps, parsed.data);
@@ -52,7 +55,9 @@ export function publicRoutes(deps: Deps) {
   });
 
   app.post("/orders/:id/feedback", async (c) => {
-    const parsed = orderFeedbackSchema.safeParse(await c.req.json().catch(() => ({})));
+    const body = await readJsonBody(c.req.raw, BODY_LIMITS.feedback);
+    if (!body.ok) return c.json({ error: body.error }, body.status);
+    const parsed = orderFeedbackSchema.safeParse(body.value);
     if (!parsed.success)
       return c.json({ error: "invalid_request", issues: formatIssues(parsed.error) }, 400);
     const order = await recordFeedback(deps, c.req.param("id"), parsed.data);
@@ -60,7 +65,9 @@ export function publicRoutes(deps: Deps) {
   });
 
   app.post("/waitlist", async (c) => {
-    const parsed = createWaitlistSchema.safeParse(await c.req.json().catch(() => ({})));
+    const body = await readJsonBody(c.req.raw, BODY_LIMITS.waitlist);
+    if (!body.ok) return c.json({ error: body.error }, body.status);
+    const parsed = createWaitlistSchema.safeParse(body.value);
     if (!parsed.success)
       return c.json({ error: "invalid_request", issues: formatIssues(parsed.error) }, 400);
     const input = parsed.data;
@@ -91,7 +98,9 @@ export function publicRoutes(deps: Deps) {
   });
 
   app.post("/events", async (c) => {
-    const parsed = createEventSchema.safeParse(await c.req.json().catch(() => ({})));
+    const body = await readJsonBody(c.req.raw, BODY_LIMITS.event);
+    if (!body.ok) return c.json({ error: body.error }, body.status);
+    const parsed = createEventSchema.safeParse(body.value);
     if (!parsed.success)
       return c.json({ error: "invalid_request", issues: formatIssues(parsed.error) }, 400);
     const input = parsed.data;
