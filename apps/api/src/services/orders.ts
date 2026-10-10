@@ -15,7 +15,8 @@ import {
 import type { Deps } from "../deps.ts";
 import type { PaymentEvent } from "../payments/types.ts";
 import { OrderWriteConflict } from "../repo/types.ts";
-import { NotFoundError, ValidationError } from "./errors.ts";
+import { safeEqual } from "./safe-equal.ts";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "./errors.ts";
 
 export interface CreateOrderResult {
   order: Order;
@@ -59,6 +60,7 @@ export async function createOrder(deps: Deps, input: CreateOrderInput): Promise<
 
   const order: Order = {
     id: deps.newId(),
+    feedback_token: deps.newToken(),
     created_at: now.toISOString(),
     updated_at: now.toISOString(),
     customer: input.customer,
@@ -85,7 +87,7 @@ export async function createOrder(deps: Deps, input: CreateOrderInput): Promise<
   const session = await deps.payments.createCheckoutSession({
     order,
     description: `${input.number_of_knives} knives, ${describePrice(price)} bundle, pickup ${formatCareDay(order.care_day)}`,
-    success_url: `${site}/thanks?order=${order.id}&session_id={CHECKOUT_SESSION_ID}`,
+    success_url: `${site}/thanks?order=${order.id}&ft=${order.feedback_token}&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${site}/?exp=${experiment.id}&src=${order.source}&ch=${order.acquisition_channel}&order=${order.id}&cancelled=1#book`,
   });
   order.stripe_checkout_session_id = session.id;
@@ -269,16 +271,25 @@ export async function updateOrder(deps: Deps, id: string, input: UpdateOrderInpu
   });
 }
 
-/** Customer answers "would you use this again?" from the thank-you page. Paid orders only. */
+/** Customer answers "would you use this again?" once, authorized by the order's feedback token. Paid orders only. */
 export async function recordFeedback(
   deps: Deps,
   id: string,
   input: OrderFeedbackInput,
 ): Promise<Order> {
   return retryOrderChange(async () => {
-    const order = await getOrder(deps, id);
+    const order = await deps.repo.getOrder(id);
+    // Unknown order, missing token, wrong token and legacy orders without a token are
+    // indistinguishable to the caller.
+    if (!order?.feedback_token || !safeEqual(input.token, order.feedback_token)) {
+      throw new ForbiddenError("feedback token rejected");
+    }
     if (order.payment_status !== "paid" && order.payment_status !== "refunded") {
       throw new ValidationError(["order: feedback is only accepted for paid orders"]);
+    }
+    // Write-once for customers; the operator PATCH is the only way to change a recorded answer.
+    if (order.repeat_intent !== "unknown") {
+      throw new ConflictError("feedback already recorded");
     }
     order.repeat_intent = input.repeat_intent;
     order.updated_at = deps.now().toISOString();

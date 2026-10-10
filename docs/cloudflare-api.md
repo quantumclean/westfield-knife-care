@@ -40,6 +40,9 @@ Never share D1 bindings between Preview and Production.
 ## Launch blockers
 
 - No production release without full Pages runtime and Stripe test validation.
+- Customer feedback is authorized by a per-order `feedback_token` (success URL and
+  operator follow-up link only). Orders created before it was introduced cannot
+  receive customer feedback; the operator records it via admin `PATCH`.
 - Exercise optimistic-lock retries with the real staging D1 database under
   concurrent webhook, admin and feedback writes. Stripe event-id deduplication
   and an operator reconciliation procedure are still not implemented.

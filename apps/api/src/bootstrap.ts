@@ -1,5 +1,5 @@
 import { configFromEnv, type Config } from "./config.ts";
-import { jsonLog, newId, type Deps } from "./deps.ts";
+import { jsonLog, newId, newToken, type Deps } from "./deps.ts";
 import { FakePaymentGateway } from "./payments/fake.ts";
 import { StripeGateway } from "./payments/stripe.ts";
 import type { PaymentGateway } from "./payments/types.ts";
@@ -20,6 +20,7 @@ export async function buildDeps(env: NodeJS.ProcessEnv = process.env): Promise<D
     payments: choosePayments(config),
     now: () => new Date(),
     newId,
+    newToken,
     log: jsonLog,
   };
 }

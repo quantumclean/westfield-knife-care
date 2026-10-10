@@ -1,7 +1,7 @@
-import { timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
 import { formatIssues, updateOrderSchema } from "@wkc/shared";
 import type { Deps } from "../deps.ts";
+import { safeEqual } from "../services/safe-equal.ts";
 import { updateOrder } from "../services/orders.ts";
 import { buildSummary } from "../services/summary.ts";
 
@@ -55,10 +55,4 @@ export function adminRoutes(deps: Deps) {
   app.get("/summary", async (c) => c.json(await buildSummary(deps, c.req.query("since"))));
 
   return app;
-}
-
-function safeEqual(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  return bufA.length === bufB.length && timingSafeEqual(bufA, bufB);
 }

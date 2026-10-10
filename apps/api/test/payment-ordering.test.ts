@@ -170,7 +170,10 @@ describe("Stripe payment state invariants", () => {
     repo.blockNextPairOfReads();
     await Promise.all([
       applyPaymentEvent(deps, refunded(order, 1_000)),
-      recordFeedback(deps, order.id, { repeat_intent: "yes" }),
+      recordFeedback(deps, order.id, {
+        repeat_intent: "yes",
+        token: (await repo.getOrder(order.id))!.feedback_token!,
+      }),
     ]);
 
     const stored = (await repo.getOrder(order.id))!;

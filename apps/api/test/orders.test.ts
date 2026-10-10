@@ -353,31 +353,21 @@ describe("GET /api/orders/:id", () => {
 });
 
 describe("POST /api/orders/:id/feedback", () => {
-  it("records repeat intent for paid orders only", async () => {
-    const { app } = makeDeps();
+  it("records repeat intent for paid orders only (authorization: see feedback-auth.test.ts)", async () => {
+    const { app, deps } = makeDeps();
     await app.request("/api/orders", json("POST", validOrder));
-    expect(
-      (await app.request("/api/orders/id-0001/feedback", json("POST", { repeat_intent: "yes" })))
-        .status,
-    ).toBe(400);
+    const token = (await deps.repo.getOrder("id-0001"))!.feedback_token;
+    const send = (body: Record<string, unknown>) =>
+      app.request("/api/orders/id-0001/feedback", json("POST", { token, ...body }));
+    expect((await send({ repeat_intent: "yes" })).status).toBe(400);
     await app.request(
       "/api/webhooks/stripe",
       webhook({ type: "checkout_completed", order_id: "id-0001", checkout_session_id: "cs_1" }),
     );
-    const res = await app.request(
-      "/api/orders/id-0001/feedback",
-      json("POST", { repeat_intent: "maybe" }),
-    );
+    expect((await send({ repeat_intent: "unknown" })).status).toBe(400);
+    const res = await send({ repeat_intent: "maybe" });
     expect(res.status).toBe(200);
     expect((await readJson(res)).repeat_intent).toBe("maybe");
-    expect(
-      (
-        await app.request(
-          "/api/orders/id-0001/feedback",
-          json("POST", { repeat_intent: "unknown" }),
-        )
-      ).status,
-    ).toBe(400);
   });
 });
 
