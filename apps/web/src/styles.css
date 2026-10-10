@@ -57,6 +57,12 @@ html {
   outline: 3px solid var(--color-primary);
   outline-offset: 5px;
 }
+/* The modal close button is focused on open; keep the ring visible but light. */
+.modal-close:focus-visible {
+  outline-width: 2px;
+  outline-offset: 2px;
+  border-radius: 8px;
+}
 
 .site-header {
   position: sticky;

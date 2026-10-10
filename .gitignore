@@ -31,3 +31,7 @@ crash.log
 .dev.vars
 .dev.vars.*
 .tmp/
+
+# Playwright
+apps/web/test-results/
+apps/web/playwright-report/
