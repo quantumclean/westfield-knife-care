@@ -1,43 +1,48 @@
-import type { OfferVersion } from "@wkc/shared";
+import { formatMoney, type OfferVersion, type PriceVersion } from "@wkc/shared";
+import { Button, Icon } from "@wkc/ui";
 
 export interface HeroProps {
   offer: OfferVersion;
+  price: PriceVersion;
   onBook: () => void;
   onPilot: () => void;
 }
 
-export function Hero({ offer, onBook, onPilot }: HeroProps) {
+export function Hero({ offer, price, onBook, onPilot }: HeroProps) {
   return (
     <section class="hero">
       <div class="container hero-inner">
         <div class="hero-copy">
-          <p class="eyebrow">A little care for your everyday kitchen · Westfield</p>
+          <p class="eyebrow">Westfield knife sharpening · Picked up at your door</p>
           <h1>
             Good food starts with a <span class="hero-highlight">sharp knife.</span>
           </h1>
           <p class="hero-subhead">
-            Your favourite knives. A fresh edge. More joy in the kitchen. We pick up, sharpen, and
-            bring them back to your door in Westfield.
+            A fresh edge for your kitchen favourites. We pick up, sharpen, and bring your knives
+            home. You get back to the good part: cooking.
           </p>
+          <p class="hero-price">
+            <strong>{formatMoney(price.bundle_price_cents, price.currency)}</strong> for{" "}
+            {price.knives_included} knives{" "}
+            <a href="#pricing">
+              See what’s included <Icon name="arrow" size={16} />
+            </a>
+          </p>
+          <div class="hero-ctas">
+            <Button size="lg" onClick={onBook} arrow>
+              {offer.cta_primary}
+            </Button>
+            <a class="film-jump" href="#process-film">
+              <span class="film-play" aria-hidden="true" />
+              Watch the 22-second film
+            </a>
+          </div>
           <p class="hero-promise">
             Choose a pickup date when booking. Return timing is arranged separately.
           </p>
-          <div class="hero-ctas">
-            <button type="button" class="cta-card cta-card-primary" onClick={onBook}>
-              <span class="cta-title">{offer.cta_primary}</span>
-              <span class="cta-sub">A fresh start for your kitchen favourites.</span>
-              <span class="cta-arrow" aria-hidden="true">
-                ›
-              </span>
-            </button>
-            <button type="button" class="cta-card cta-card-secondary" onClick={onPilot}>
-              <span class="cta-title">{offer.cta_secondary}</span>
-              <span class="cta-sub">Give us a dull knife, get a sharp one. Always.</span>
-              <span class="cta-arrow" aria-hidden="true">
-                ›
-              </span>
-            </button>
-          </div>
+          <button type="button" class="pilot-link" onClick={onPilot}>
+            {offer.cta_secondary} <Icon name="arrow" size={16} />
+          </button>
         </div>
         <figure class="hero-media">
           <img

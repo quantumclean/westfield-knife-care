@@ -9,7 +9,7 @@ export function HowItWorks() {
       subtitle="Three simple steps. A local helping hand."
     >
       <Steps steps={HOW_IT_WORKS} />
-      <div class="process-film">
+      <div class="process-film" id="process-film">
         <div class="process-film-copy">
           <p class="eyebrow">Watch the story · 22 seconds</p>
           <h3 id="process-film-title">Less struggle. More chopping.</h3>
