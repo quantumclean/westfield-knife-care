@@ -25,10 +25,15 @@ class DisabledPayments implements PaymentGateway {
   }
 }
 
+const orderRead = /^\/api\/orders\/[^/]+$/;
+const feedbackWrite = /^\/api\/orders\/[^/]+\/feedback$/;
+
 const ratePolicy = (path: string, method: string): { limit: number; scope: string } | undefined => {
   if (method === "POST" && path === "/api/orders") return { limit: 5, scope: "orders" };
   if (method === "POST" && path === "/api/waitlist") return { limit: 5, scope: "waitlist" };
   if (method === "POST" && path === "/api/events") return { limit: 120, scope: "events" };
+  if (method === "GET" && orderRead.test(path)) return { limit: 120, scope: "order-read" };
+  if (method === "POST" && feedbackWrite.test(path)) return { limit: 60, scope: "feedback-write" };
   if (path.startsWith("/api/admin/")) return { limit: 30, scope: "admin" };
   // Stripe webhooks use cryptographic signatures and must remain retryable.
   return undefined;
@@ -40,9 +45,11 @@ async function withinRateLimit(
   ip: string,
   scope: string,
   limit: number,
+  orderId?: string,
 ): Promise<boolean> {
   const minute = Math.floor(Date.now() / 60000);
-  const input = new TextEncoder().encode(salt + ":" + ip);
+  // Hash the complete identity so neither the IP nor an order ID appears in D1 buckets.
+  const input = new TextEncoder().encode(JSON.stringify([salt, ip, orderId]));
   const digest = await crypto.subtle.digest("SHA-256", input);
   const identifier = Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, "0"))
@@ -61,6 +68,12 @@ const unavailable = (message: string) =>
   Response.json(
     { error: "service_unavailable", message },
     { status: 503, headers: { "Cache-Control": "no-store" } },
+  );
+
+const rateLimited = () =>
+  Response.json(
+    { error: "rate_limited" },
+    { status: 429, headers: { "Retry-After": "60", "Cache-Control": "no-store" } },
   );
 
 /** Cloudflare Pages Functions adapter; no AWS SDK or fake payment fallback. */
@@ -109,16 +122,19 @@ export async function handlePagesApi(request: Request, env: PagesBindings): Prom
 
   const path = new URL(request.url).pathname;
   const policy = ratePolicy(path, request.method);
+  let protection: { ip: string; salt: string } | undefined;
   if (policy) {
     const ip = request.headers.get("CF-Connecting-IP");
     const salt = env.RATE_LIMIT_SALT?.trim();
     if (!ip || !salt) return unavailable("Request protection is not configured.");
+    protection = { ip, salt };
     try {
-      if (!(await withinRateLimit(env.DB, salt, ip, policy.scope, policy.limit))) {
-        return Response.json(
-          { error: "rate_limited" },
-          { status: 429, headers: { "Retry-After": "60", "Cache-Control": "no-store" } },
-        );
+      if (!(await withinRateLimit(env.DB, salt, ip, policy.scope, policy.limit)))
+        return rateLimited();
+      if (request.method === "POST" && feedbackWrite.test(path)) {
+        const orderId = path.slice("/api/orders/".length, -"/feedback".length);
+        if (!(await withinRateLimit(env.DB, salt, ip, "feedback-order", 10, orderId)))
+          return rateLimited();
       }
     } catch {
       return unavailable("Request protection is unavailable.");
@@ -157,6 +173,14 @@ export async function handlePagesApi(request: Request, env: PagesBindings): Prom
   };
 
   const response = await createApp(deps).fetch(request);
+  if (request.method === "GET" && orderRead.test(path) && response.status === 404 && protection) {
+    try {
+      if (!(await withinRateLimit(env.DB, protection.salt, protection.ip, "order-miss", 30)))
+        return rateLimited();
+    } catch {
+      return unavailable("Request protection is unavailable.");
+    }
+  }
   const headers = new Headers(response.headers);
   headers.set("Cache-Control", "no-store");
   return new Response(response.body, {

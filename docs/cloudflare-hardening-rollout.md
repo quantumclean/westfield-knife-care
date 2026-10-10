@@ -38,13 +38,39 @@ Staging rate limits per salted IP hash, in a UTC-minute bucket:
 - POST /api/orders: 5 requests/minute
 - POST /api/waitlist: 5 requests/minute
 - POST /api/events: 120 requests/minute
+- GET /api/orders/:id: 120 requests/minute per IP; after 30 missing-order
+  responses per minute, further misses return 429. Successful reads remain
+  available until the overall 120-request limit is reached.
+- POST /api/orders/:id/feedback: 60 requests/minute per IP, plus 10 requests
+  per minute for each IP and order pair. Different orders behind one shared IP
+  have separate pair budgets.
 - /api/admin/*: 30 requests/minute
 - /api/webhooks/stripe: no IP throttle (signed Stripe retries must work)
 
-A legitimate customer may hit a 429 behind a shared public IP; confirm the
-limits with real staging traffic. Add Cloudflare WAF rules and admin Cloudflare
-Access policies before production (dashboard-managed; not set by this PR).
+The customer JSON body limits are 16 KiB for orders and waitlist, and 4 KiB for
+events and feedback. Authenticated admin PATCH accepts up to 16 KiB. Stripe
+webhooks have a separate 2 MiB body limit; signature verification and retries
+are unchanged. Oversized bodies return 413, including streamed requests without
+Content-Length. Malformed JSON returns 400.
+
+This PR reuses `api_rate_limits` and `RATE_LIMIT_SALT`; it requires no new D1
+migration or Cloudflare setting. Apply the existing `0002_rate_limits.sql` and
+configure `RATE_LIMIT_SALT` before deploying to any environment that lacks them.
+The Node development server has body limits but Pages is the rate-limit boundary.
+
+A legitimate customer may still hit a 429 behind a very busy shared public IP;
+review staging traffic and adjust the global budgets if needed. The 10-attempt
+feedback limit is scoped to one IP and order, so separate customers on that IP
+do not consume each other's small bucket. Add Cloudflare WAF rules and admin
+Cloudflare Access policies before production (dashboard-managed; not set by this
+PR).
 The salt is used in the hash input; only hash values are stored.
+
+Known order IDs still return the existing limited public view (first name,
+booking status, care date, and price). The public view excludes email, phone,
+address, and feedback token; unknown IDs receive only `not_found`. Feedback
+with an incorrect token returns the same generic `forbidden` response for known
+and unknown IDs. This PR does not change the existing order-read access model.
 
 ## 3. Daily retention cleanup
 
