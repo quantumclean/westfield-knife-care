@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { Section } from "@wkc/ui";
 import { EVENTS, track } from "../lib/analytics.ts";
 
 /**
@@ -11,7 +10,7 @@ import { EVENTS, track } from "../lib/analytics.ts";
  * Nothing but the poster loads until the film is half on screen.
  * Files are versioned so a re-render never collides with a cached copy.
  */
-const VERSION = "v2";
+const VERSION = "v3";
 type Format = "landscape" | "square";
 
 const file = (format: Format, suffix: string) => `/video/launch-${format}-${VERSION}${suffix}`;
@@ -103,43 +102,54 @@ export function LaunchVideo() {
   };
 
   return (
-    <Section id="video" title="Sharpening, handled.">
-      <div class="video-frame" style={{ aspectRatio: format === "square" ? "1 / 1" : "16 / 9" }}>
-        <video
-          ref={ref}
-          muted={muted}
-          loop
-          playsInline
-          preload="none"
-          poster={file(format, "-poster.jpg")}
-          aria-label="Westfield Knife Care: dull, sharp. Picked up at your door. Back on your doorstep."
-          aria-describedby="video-transcript"
-          onPlay={() => setPlaying(true)}
-          onPause={() => setPlaying(false)}
-        >
-          <source src={file(format, ".webm")} type="video/webm" />
-          <source src={file(format, ".mp4")} type="video/mp4" />
-        </video>
-        {!playing && (
-          <button type="button" class="video-play" onClick={togglePlay} aria-label="Play video">
-            <span aria-hidden="true">▶</span>
-          </button>
-        )}
-        <div class="video-controls">
-          <button type="button" class="video-btn" onClick={togglePlay}>
-            {playing ? "Pause" : "Play"}
-          </button>
-          <button type="button" class="video-btn" onClick={toggleSound} aria-pressed={!muted}>
-            {muted ? "Sound on" : "Mute"}
-          </button>
-        </div>
+    <div class="process-film" id="process-film">
+      <div class="process-film-copy">
+        <p class="eyebrow">Watch the story · 23 seconds</p>
+        <h3 id="process-film-title">Less struggle. More chopping.</h3>
+        <p>
+          See the difference a sharp edge makes, and how your knives go from your door to sharpening
+          and back home again.
+        </p>
+        <details class="process-description" id="video-transcript">
+          <summary>Read the video description</summary>
+          {TRANSCRIPT.map((line) => (
+            <p key={line}>{line}</p>
+          ))}
+        </details>
       </div>
-      <details class="video-transcript" id="video-transcript">
-        <summary>What's in the video</summary>
-        {TRANSCRIPT.map((line) => (
-          <p key={line}>{line}</p>
-        ))}
-      </details>
-    </Section>
+      <figure class="process-film-frame">
+        <div class="video-frame" style={{ aspectRatio: format === "square" ? "1 / 1" : "16 / 9" }}>
+          <video
+            ref={ref}
+            muted={muted}
+            loop
+            playsInline
+            preload="none"
+            poster={file(format, "-poster.jpg")}
+            aria-labelledby="process-film-title"
+            aria-describedby="video-transcript"
+            onPlay={() => setPlaying(true)}
+            onPause={() => setPlaying(false)}
+          >
+            <source src={file(format, ".webm")} type="video/webm" />
+            <source src={file(format, ".mp4")} type="video/mp4" />
+          </video>
+          {!playing && (
+            <button type="button" class="video-play" onClick={togglePlay} aria-label="Play video">
+              <span aria-hidden="true">▶</span>
+            </button>
+          )}
+          <div class="video-controls">
+            <button type="button" class="video-btn" onClick={togglePlay}>
+              {playing ? "Pause" : "Play"}
+            </button>
+            <button type="button" class="video-btn" onClick={toggleSound} aria-pressed={!muted}>
+              {muted ? "Sound on" : "Mute"}
+            </button>
+          </div>
+        </div>
+        <figcaption>A little care. A fresh start for dinner.</figcaption>
+      </figure>
+    </div>
   );
 }

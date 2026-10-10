@@ -9,24 +9,34 @@
 :root {
   color-scheme: light dark;
 
-  --paper: light-dark(#f4eee2, #181b17);
-  --paper-deep: light-dark(#ebe2cf, #1f231e);
-  --card: light-dark(#fcf9f2, #232822);
-  --ink: light-dark(#1e2721, #f1ebdd);
-  --ink-soft: light-dark(#575e57, #b8b2a4);
-  --rule: light-dark(#d6cbb5, #3b4137);
-  --forest: light-dark(#1f4d34, #9fd08c);
-  --forest-deep: light-dark(#163a27, #b9e2a8);
-  --on-forest: light-dark(#fbf7ee, #10180f);
-  --tomato: light-dark(#bf3f27, #f08467);
+  /* Warm Scandinavian palette (PR #24), with designed night variants. */
+  --paper: light-dark(#fff7e8, #17191a);
+  --paper-deep: light-dark(#f5ebd8, #1e2120);
+  --card: light-dark(#fffaf0, #232726);
+  --ink: light-dark(#283b32, #f3ecdc);
+  --ink-soft: light-dark(#536050, #bdb6a6);
+  --rule: light-dark(#d9c8a8, #3c423d);
+  --forest: light-dark(#24604b, #9fd3b0);
+  --forest-deep: light-dark(#194636, #bfe6cb);
+  --on-forest: light-dark(#fff7e8, #0f1a14);
+  --tomato: light-dark(#b2432a, #f39a80);
   --lemon: #f2c94c;
   --leaf: #6f9a45;
-  --focus: light-dark(#1f4d34, #f2c94c);
+  /* Section and card tints */
+  --butter: light-dark(#f8df8e, #2a2616);
+  --coral: light-dark(#f6af97, #33211b);
+  --sky: light-dark(#c5e3ed, #172329);
+  --sage: light-dark(#bad398, #1d2718);
+  --oak: light-dark(#e8b380, #6e5134);
+  --oak-edge: light-dark(#d39a66, #4d3823);
+  --oak-tint: light-dark(#f0dabd, #241e17);
+  --cream-tint: light-dark(#fff0d5, #1c1b16);
+  --focus: light-dark(#24604b, #f2c94c);
 
   --serif: "Instrument Serif", ui-serif, Georgia, "Times New Roman", serif;
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
 
-  --radius: 16px;
+  --radius: 22px;
   --radius-sm: 10px;
   --shadow: 0 1px 0 light-dark(#fff8, #fff1) inset, 0 10px 30px light-dark(#3a2b1022, #0008);
   --lift: 0 2px 0 light-dark(#1e272118, #0006), 0 14px 34px light-dark(#3a2b1026, #0009);
@@ -34,7 +44,7 @@
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
 
   /* Static paper fibre. Tiled, so it costs one small decode. */
-  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .27 0 0 0 0 .16 0 0 0 .09 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .27 0 0 0 0 .16 0 0 0 .06 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
   /* Rough mask for stamps: ink never lands evenly. */
   --ink-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.4' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -2.2 2.1'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
 

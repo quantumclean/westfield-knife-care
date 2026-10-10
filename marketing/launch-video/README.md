@@ -36,7 +36,7 @@ node render.mjs --stills 5.9,14.5        # quick PNG checks in out/stills/
 node render.mjs --publish                # both formats -> out/, copied to apps/web/public/video/
 ```
 
-Output is `launch-{format}-v2.{mp4,webm}` plus `-poster.jpg` (the
+Output is `launch-{format}-v3.{mp4,webm}` plus `-poster.jpg` (the
 frame at `cues.json` `poster`). Output is identical on every run: frames
 come from seeking the timeline to exact times, never from wall-clock
 playback.

@@ -24,10 +24,10 @@
 }
 
 :root {
-  --black: #f4eee2;
-  --white: #1e2721;
+  --black: #fff7e8;
+  --white: #283b32;
   --gray: #9a9c92;
-  --lime: #1f4d34;
+  --lime: #24604b;
   --green: #1f4d34;
   --ink: #111814;
   --sans: "Inter Variable", system-ui, sans-serif;
@@ -52,7 +52,7 @@ body.square {
 }
 html,
 body {
-  background: #f4eee2;
+  background: #fff7e8;
   overflow: hidden;
 }
 body {
@@ -152,11 +152,11 @@ body.square .word {
 .word.sharp .ln > span {
   background: linear-gradient(
     100deg,
-    #1e2721 0%,
-    #1e2721 42%,
-    #bf3f27 50%,
-    #1e2721 58%,
-    #1e2721 100%
+    #283b32 0%,
+    #283b32 42%,
+    #b2432a 50%,
+    #283b32 58%,
+    #283b32 100%
   );
   background-size: 300% 100%;
   background-position: 100% 0;
@@ -350,6 +350,6 @@ body.square .end .cta {
 .end .url {
   font-size: 40px;
   font-weight: 600;
-  color: #575e57;
+  color: #536050;
   letter-spacing: -0.01em;
 }

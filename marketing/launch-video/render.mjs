@@ -12,7 +12,7 @@
 // libx264, libvpx-vp9, libopus; audio comes from `npm run audio`.
 //
 // Formats are 16:9 (desktop) and 1:1 (phone). Output:
-// launch-{format}-v2.{mp4,webm} and -poster.jpg.
+// launch-{format}-v3.{mp4,webm} and -poster.jpg.
 import { spawn } from "node:child_process";
 import { mkdir, copyFile, stat, rm, writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
@@ -28,7 +28,7 @@ const opt = (name, fallback) => {
 };
 const flag = (name) => args.includes(`--${name}`);
 
-const VERSION = "v2";
+const VERSION = "v3";
 const MODES = { landscape: [1920, 1080], square: [1080, 1080] };
 const modes = opt("mode", "both") === "both" ? Object.keys(MODES) : [opt("mode")];
 const cues = JSON.parse(await readFile(path.join(root, "cues.json"), "utf8"));

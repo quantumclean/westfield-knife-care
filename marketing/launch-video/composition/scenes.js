@@ -176,8 +176,8 @@ Object.assign(edgeSvg.style, {
 });
 edgeSvg.setAttribute("viewBox", `0 0 ${edgeW} 8`);
 edgeSvg.innerHTML = `<defs><linearGradient id="edge-g" x1="0" y1="0" x2="1" y2="0">
-  <stop offset="0" stop-color="#1e2721" stop-opacity="0"/><stop offset="0.35" stop-color="#1e2721"/>
-  <stop offset="0.8" stop-color="#bf3f27"/><stop offset="1" stop-color="#bf3f27" stop-opacity="0"/>
+  <stop offset="0" stop-color="#283b32" stop-opacity="0"/><stop offset="0.35" stop-color="#283b32"/>
+  <stop offset="0.8" stop-color="#b2432a"/><stop offset="1" stop-color="#b2432a" stop-opacity="0"/>
 </linearGradient></defs>
 <line x1="0" y1="4" x2="${edgeW}" y2="4" stroke="url(#edge-g)" stroke-width="3" stroke-linecap="round"/>`;
 

@@ -98,7 +98,7 @@ export function App({ session }: { session: Session }) {
 
   return (
     <>
-      <a class="skip-link" href="#main">
+      <a class="skip-link" href="#main-content">
         Skip to content
       </a>
       <Header
@@ -106,7 +106,7 @@ export function App({ session }: { session: Session }) {
         onBook={() => openBooking("nav")}
         onIntent={prefetchBooking}
       />
-      <main id="main">
+      <main id="main-content" tabIndex={-1}>
         <Hero
           offer={experiment.offer}
           price={experiment.price}
@@ -115,8 +115,9 @@ export function App({ session }: { session: Session }) {
           onPilot={() => openPilot("hero")}
           onIntent={prefetchBooking}
         />
-        <HowItWorks />
-        <LaunchVideo />
+        <HowItWorks>
+          <LaunchVideo />
+        </HowItWorks>
         <Pricing
           experiment={experiment}
           onBook={() => openBooking("pricing")}

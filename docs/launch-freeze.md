@@ -18,7 +18,9 @@ arms within each period, not across it.
 
 - Shipped: _deploy timestamp to be filled in on release_
 - What changed: see `docs/proposals/phase-2-booking-ux.md` (items 1, 5 and
-  6 are now implemented) and the PR description.
+  6 are now implemented) and the PR description. The warm Scandinavian
+  refresh (PR #24) reached main first and ships blended with it, so treat
+  #24 and #26 as one change when splitting before/after.
 
 ## In scope during the freeze
 

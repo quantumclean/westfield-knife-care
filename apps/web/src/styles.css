@@ -35,73 +35,28 @@
   align-items: center;
   gap: 0.5rem;
 }
-.menu-button {
-  display: none;
-  place-items: center;
-  width: 46px;
-  height: 46px;
-  border-radius: 12px;
-  border: 1.5px solid var(--rule);
-  background: var(--card);
-  color: var(--ink);
-  cursor: pointer;
-}
-.menu-button svg {
-  width: 24px;
-  height: 24px;
-}
-.site-menu {
-  position: fixed;
-  inset: 76px 12px auto auto;
-  margin: 0;
-  width: min(300px, calc(100vw - 24px));
-  padding: 0.75rem;
-  border-radius: 18px;
-  border: 1.5px solid var(--rule);
-  background: var(--card);
-  color: var(--ink);
-  box-shadow: var(--lift);
-  opacity: 1;
-  translate: 0 0;
-  transition:
-    opacity 0.2s,
-    translate 0.25s var(--ease-out),
-    overlay 0.25s allow-discrete,
-    display 0.25s allow-discrete;
-}
-.site-menu:popover-open {
-  display: grid;
-  gap: 0.2rem;
-}
-.site-menu:not(:popover-open) {
-  opacity: 0;
-  translate: 0 -8px;
-}
-@starting-style {
-  .site-menu:popover-open {
-    opacity: 0;
-    translate: 0 -8px;
-  }
-}
-.site-menu a {
-  padding: 0.85rem 0.8rem;
-  border-radius: 10px;
-  text-decoration: none;
-  font-weight: 620;
-  font-size: 1.05rem;
-}
-.site-menu a:hover {
-  background: var(--paper-deep);
-}
-.site-menu .btn {
-  margin-top: 0.4rem;
-}
+/* Phones: the three section links drop to a second row (from PR #24). */
 @media (max-width: 760px) {
-  .site-nav {
-    display: none;
+  html {
+    scroll-padding-top: 8.5rem;
   }
-  .menu-button {
-    display: grid;
+  .site-header-inner {
+    flex-wrap: wrap;
+    gap: 0 1rem;
+    min-height: 60px;
+  }
+  .site-nav {
+    order: 3;
+    flex: 1 0 100%;
+    justify-content: center;
+    gap: clamp(1rem, 8vw, 2.25rem);
+    border-top: 1.5px solid color-mix(in srgb, var(--rule) 70%, transparent);
+    font-size: 0.9rem;
+  }
+  .site-nav a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
   }
 }
 @media (max-width: 560px) {
@@ -114,8 +69,22 @@
 }
 
 /* ---------- Hero ---------- */
+.eyebrow {
+  margin-bottom: 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
 .hero {
   padding: clamp(1.75rem, 5vw, 4rem) 0 clamp(2.5rem, 6vw, 5rem);
+  background: var(--butter);
+  overflow-x: clip;
+}
+.hero .hero-ticket {
+  background: var(--card);
 }
 .hero-inner {
   display: grid;
@@ -145,7 +114,7 @@
   margin-bottom: 1rem;
 }
 .hero h1 em {
-  color: var(--forest);
+  color: var(--tomato);
 }
 .hero-lede {
   max-width: 36ch;
@@ -211,6 +180,32 @@
 .hero-cta {
   min-width: 260px;
 }
+.film-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 44px;
+  font-weight: 650;
+  text-decoration: none;
+}
+.film-jump:hover {
+  text-decoration: underline;
+}
+.film-play {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--coral);
+}
+.film-play::after {
+  content: "";
+  margin-left: 3px;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  border-left: 9px solid var(--forest);
+}
 .link-quiet {
   min-height: 44px;
   padding: 0.5rem 0;
@@ -239,20 +234,74 @@
 }
 
 /* The cutting board card and the slicing toy */
+.hero-board {
+  position: relative;
+}
+/* The board sits in an oak frame with a solid offset edge (from PR #24). */
 .board-card {
   position: relative;
-  padding: clamp(0.5rem, 2vw, 1rem);
-  border-radius: 26px;
-  border: 1.5px solid var(--rule);
-  background-color: var(--paper-deep);
+  padding: clamp(0.4rem, 1.5vw, 0.75rem);
+  border-radius: 30px;
+  background: var(--oak);
+  box-shadow: 8px 8px 0 var(--oak-edge);
+}
+.board-card .slice-board {
+  border-radius: 20px;
+  background-color: var(--cream-tint);
   background-image:
     radial-gradient(
       120% 90% at 50% 0%,
-      color-mix(in srgb, var(--lemon) 16%, transparent),
+      color-mix(in srgb, var(--lemon) 18%, transparent),
       transparent 60%
     ),
     var(--grain);
-  box-shadow: var(--lift);
+}
+.kitchen-stamp {
+  position: absolute;
+  top: -22px;
+  right: -12px;
+  z-index: 2;
+  display: grid;
+  place-content: center;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  border: 4px solid var(--butter);
+  background: #c94f35;
+  color: #fff7e8;
+  font-weight: 750;
+  line-height: 1.2;
+  text-align: center;
+  rotate: 10deg;
+  pointer-events: none;
+}
+@media (max-width: 560px) {
+  .kitchen-stamp {
+    width: 80px;
+    height: 80px;
+    right: 6px;
+    font-size: 0.85rem;
+  }
+}
+/* Very narrow phones: stack price and next pickup inside the ticket. */
+@media (max-width: 400px) {
+  .hero-ticket {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .hero-next {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 0.5rem;
+    padding: 0.7rem 0 0;
+    border-left: 0;
+    border-top: 2px dashed var(--rule);
+    text-align: left;
+  }
+  .hero-next-label {
+    flex-basis: 100%;
+  }
 }
 .slice-board {
   display: block;
@@ -269,7 +318,7 @@
 .board-hint {
   position: absolute;
   left: 50%;
-  bottom: clamp(0.5rem, 2vw, 1rem);
+  bottom: clamp(0.8rem, 2.4vw, 1.4rem);
   translate: -50% 0;
   white-space: nowrap;
   display: flex;
@@ -297,6 +346,9 @@
 }
 
 /* ---------- How it works: one stitched route ---------- */
+#how-it-works {
+  background: var(--sky);
+}
 .route {
   position: relative;
   display: grid;
@@ -309,15 +361,23 @@
 .route::before {
   content: "";
   position: absolute;
-  top: 56px;
+  top: 84px;
   left: 17%;
   right: 17%;
   border-top: 2.5px dashed color-mix(in srgb, var(--ink) 40%, transparent);
 }
 .route-stop {
   position: relative;
-  padding: 0 0.5rem;
+  padding: 1.75rem 1.25rem 1.6rem;
+  border-radius: var(--radius);
+  background: var(--butter);
   text-align: center;
+}
+.route-stop:nth-child(2) {
+  background: var(--coral);
+}
+.route-stop:nth-child(3) {
+  background: var(--sage);
 }
 .route-art {
   position: relative;
@@ -360,9 +420,9 @@
     gap: 1.75rem;
   }
   .route::before {
-    top: 20px;
-    bottom: 20px;
-    left: 47px;
+    top: 40px;
+    bottom: 40px;
+    left: 63px;
     right: auto;
     border-top: 0;
     border-left: 2.5px dashed color-mix(in srgb, var(--ink) 40%, transparent);
@@ -372,7 +432,7 @@
     grid-template-columns: 96px 1fr;
     column-gap: 1.1rem;
     align-items: center;
-    padding: 0;
+    padding: 1rem;
     text-align: left;
   }
   .route-art {
@@ -411,11 +471,41 @@
 }
 
 /* ---------- Pricing ---------- */
+#pricing {
+  --paper-deep: var(--oak-tint);
+}
+.kitchen-photo {
+  margin: 1.75rem 0 0;
+  padding: 10px 10px 0;
+  border-radius: 26px;
+  background: var(--oak);
+  box-shadow: 6px 6px 0 var(--oak-edge);
+}
+.kitchen-photo img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 18px;
+}
+.kitchen-photo figcaption {
+  padding: 0.75rem 0.5rem 0.9rem;
+  font-family: var(--serif);
+  font-size: 1.2rem;
+  text-align: center;
+  color: light-dark(#453221, #fff1dc);
+}
+.pricing-side {
+  display: grid;
+  gap: 1.5rem;
+  justify-items: stretch;
+}
 .pricing-wrap {
   display: grid;
   grid-template-columns: 1fr minmax(300px, 420px);
   gap: clamp(2rem, 6vw, 5rem);
-  align-items: center;
+  align-items: start;
 }
 @media (max-width: 860px) {
   .pricing-wrap {
@@ -443,6 +533,7 @@
 }
 .price-ticket {
   rotate: 0.6deg;
+  background: var(--card);
 }
 .price-ticket-top {
   padding: 1.6rem 1.6rem 1.4rem;
@@ -522,9 +613,23 @@
 }
 
 /* ---------- Footer ---------- */
+#faq {
+  background: var(--cream-tint);
+}
 .site-footer {
   padding: 2.5rem 0;
-  border-top: 1.5px dashed var(--rule);
+  background: #24604b;
+  color: #fff7e8;
+}
+.site-footer .muted,
+.site-footer .logo-word em {
+  color: #e0e9d7;
+}
+.site-footer a {
+  color: #fff7e8;
+}
+.site-footer .logo-mark path[fill="var(--card)"] {
+  fill: #fff7e8;
 }
 .site-footer-inner {
   display: flex;
@@ -929,19 +1034,58 @@
   margin-bottom: 1rem;
 }
 
-/* ---------- Launch film ---------- */
-#video .section-header {
-  margin-bottom: 1.75rem;
+/* ---------- Launch film (layout from PR #24) ---------- */
+.process-film {
+  display: grid;
+  grid-template-columns: 0.8fr 1.2fr;
+  gap: clamp(1.5rem, 4vw, 3rem);
+  align-items: center;
+  margin-top: clamp(2.5rem, 6vw, 4rem);
+}
+@media (max-width: 760px) {
+  .process-film {
+    grid-template-columns: 1fr;
+  }
+}
+.process-film-copy h3 {
+  font-family: var(--serif);
+  font-size: clamp(2rem, 3.6vw, 2.8rem);
+  font-weight: 400;
+  line-height: 1;
+  margin-bottom: 0.6rem;
+}
+.process-description summary {
+  min-height: 44px;
+  padding: 0.5rem 0;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.process-description p {
+  margin: 0.5rem 0 0;
+  color: var(--ink-soft);
+}
+.process-film-frame {
+  min-width: 0;
+  margin: 0;
+  padding: 12px 12px 4px;
+  border-radius: var(--radius);
+  background: var(--oak);
+  box-shadow: 6px 6px 0 var(--oak-edge);
+  text-align: center;
+}
+.process-film-frame figcaption {
+  margin: 0.7rem 0;
+  font-family: var(--serif);
+  font-size: 1.2rem;
+  color: light-dark(#453221, #fff1dc);
 }
 .video-frame {
   position: relative;
-  max-width: 1040px;
-  margin: 0 auto;
   overflow: hidden;
-  border-radius: 20px;
-  border: 1.5px solid var(--rule);
-  background: var(--paper-deep);
-  box-shadow: var(--lift);
+  border-radius: 16px;
+  background: var(--cream-tint);
 }
 .video-frame video {
   display: block;
@@ -993,20 +1137,6 @@
 .video-btn:hover {
   border-color: var(--ink);
 }
-.video-transcript {
-  max-width: 1040px;
-  margin: 1rem auto 0;
-  font-size: 0.95rem;
-  color: var(--ink-soft);
-}
-.video-transcript summary {
-  font-weight: 600;
-  cursor: pointer;
-}
-.video-transcript p {
-  margin: 0.5rem 0 0;
-}
-
 /* ---------- Thank-you page: the booking pass ---------- */
 .pass-page {
   max-width: 640px;

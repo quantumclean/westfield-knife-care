@@ -25,14 +25,14 @@ export function Hero({ offer, price, nextPickup, onBook, onPilot, onIntent }: He
         <div class="hero-copy">
           <p class="hero-kicker">
             <span class="stamp">Westfield, NJ</span>
-            <span>Local pickup · No shipping</span>
+            <span>Picked up at your door · No shipping</span>
           </p>
           <h1 id="hero-title">
-            Sharp knives, <em>without leaving home.</em>
+            Good food starts with a <em>sharp knife.</em>
           </h1>
           <p class="hero-lede">
-            We pick up your kitchen knives at your door, sharpen them, and bring them back to your
-            doorstep.
+            A fresh edge for your kitchen favourites. We pick up, sharpen, and bring your knives
+            home. You get back to the good part: cooking.
           </p>
 
           <div class="hero-ticket ticket">
@@ -70,13 +70,22 @@ export function Hero({ offer, price, nextPickup, onBook, onPilot, onIntent }: He
                 →
               </span>
             </button>
-            <button type="button" class="link-quiet" onClick={onPilot}>
-              or join the Always Sharp waitlist
-            </button>
+            <a class="film-jump" href="#process-film">
+              <span class="film-play" aria-hidden="true" />
+              Watch the film
+            </a>
           </div>
+          <button type="button" class="link-quiet" onClick={onPilot}>
+            or join the Always Sharp waitlist
+          </button>
         </div>
         <div class="hero-board">
           <CuttingBoard />
+          <span class="kitchen-stamp" aria-hidden="true">
+            Chop chop.
+            <br />
+            Let’s cook!
+          </span>
         </div>
       </div>
     </section>
