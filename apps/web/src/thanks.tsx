@@ -7,7 +7,12 @@ import { Button, Logo, Notice } from "@wkc/ui";
 import { ApiError, api, type PublicOrder } from "./lib/api.ts";
 import { EVENTS, initAnalytics, track } from "./lib/analytics.ts";
 import { describeUnpaidStatus } from "./lib/order-status.ts";
+import { takeFeedbackToken } from "./lib/feedback-token.ts";
 import { loadSession } from "./lib/session.ts";
+
+// Must run before any analytics: strip the bearer token from the URL so it never reaches GA4,
+// our first-party /events, page_location, a history entry or a later Referer. Kept in memory only.
+const feedbackToken = takeFeedbackToken(window.location, window.history);
 
 const session = loadSession();
 initAnalytics(session);
@@ -19,8 +24,6 @@ const MAX_POLLS = 10;
 const params = new URLSearchParams(window.location.search);
 const orderId = params.get("order");
 const askFeedback = params.get("feedback") === "1";
-/** Authorizes the one feedback answer; present only in the checkout success URL and the follow-up link. */
-const feedbackToken = params.get("ft");
 
 function ThanksPage() {
   const [order, setOrder] = useState<PublicOrder | null>(null);
