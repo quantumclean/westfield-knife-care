@@ -1,0 +1,355 @@
+@font-face {
+  font-family: "Instrument Serif";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url("/node_modules/@fontsource/instrument-serif/files/instrument-serif-latin-400-normal.woff2")
+    format("woff2");
+}
+@font-face {
+  font-family: "Instrument Serif";
+  font-style: italic;
+  font-weight: 400;
+  font-display: block;
+  src: url("/node_modules/@fontsource/instrument-serif/files/instrument-serif-latin-400-italic.woff2")
+    format("woff2");
+}
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: block;
+  src: url("/node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2")
+    format("woff2");
+}
+
+:root {
+  --black: #fff7e8;
+  --white: #283b32;
+  --gray: #9a9c92;
+  --lime: #24604b;
+  --green: #1f4d34;
+  --ink: #111814;
+  --sans: "Inter Variable", system-ui, sans-serif;
+}
+body.landscape {
+  --W: 1920px;
+  --H: 1080px;
+  --fs-beat: 290px;
+  --fs-line: 172px;
+}
+body.square {
+  --W: 1080px;
+  --H: 1080px;
+  --fs-beat: 240px;
+  --fs-line: 136px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+html,
+body {
+  background: #fff7e8;
+  overflow: hidden;
+}
+body {
+  font-family: var(--sans);
+  color: var(--white);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+#stage {
+  position: relative;
+  width: var(--W);
+  height: var(--H);
+  overflow: hidden;
+  background: var(--black);
+}
+.layer,
+.scene {
+  position: absolute;
+  inset: 0;
+}
+.scene {
+  visibility: hidden;
+  opacity: 0;
+}
+#vignette {
+  background: radial-gradient(85% 85% at 50% 50%, transparent 55%, rgba(120, 88, 45, 0.22) 100%);
+  z-index: 30;
+}
+#grain {
+  opacity: 0.05;
+  background-size: 220px 220px;
+  z-index: 31;
+}
+
+/* A soft pool of light behind the hero object. */
+.spot {
+  position: absolute;
+  width: 1500px;
+  height: 1100px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(242, 201, 76, 0.2), rgba(242, 201, 76, 0) 100%);
+  opacity: 0;
+}
+body.landscape .spot {
+  left: 1240px;
+  top: 600px;
+  margin: -550px 0 0 -750px;
+}
+body.square .spot {
+  left: 540px;
+  top: 700px;
+  margin: -550px 0 0 -750px;
+}
+
+/* ---------- Words ---------- */
+.word {
+  position: absolute;
+  font-family: "Instrument Serif", Georgia, serif;
+  font-weight: 400;
+  letter-spacing: -0.012em;
+  line-height: 0.95;
+  white-space: nowrap;
+}
+.word .ln {
+  display: block;
+  overflow: hidden;
+  padding: 0.02em 0.04em 0.12em;
+  margin: -0.02em -0.04em -0.12em;
+}
+.word .ln > span {
+  display: inline-block;
+}
+.word.beat {
+  font-size: var(--fs-beat);
+}
+.word.lines {
+  font-size: var(--fs-line);
+}
+.word .ln.accent > span {
+  color: var(--lime);
+}
+body.landscape .word {
+  left: 150px;
+  top: 50%;
+  transform: translateY(-54%);
+}
+body.square .word {
+  left: 0;
+  right: 0;
+  top: 96px;
+  text-align: center;
+}
+.word.dull {
+  color: var(--gray);
+  filter: blur(1.4px);
+}
+.word.sharp .ln > span {
+  background: linear-gradient(
+    100deg,
+    #283b32 0%,
+    #283b32 42%,
+    #b2432a 50%,
+    #283b32 58%,
+    #283b32 100%
+  );
+  background-size: 300% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.edge {
+  position: absolute;
+  overflow: visible;
+}
+body.landscape .edge {
+  left: 160px;
+  top: 690px;
+  width: 700px;
+  height: 8px;
+}
+body.square .edge {
+  left: 270px;
+  top: 300px;
+  width: 540px;
+  height: 8px;
+}
+
+/* ---------- Kitchen (dull + sharp) ---------- */
+.kitchen {
+  position: absolute;
+}
+body.landscape .kitchen {
+  left: 810px;
+  top: 283px;
+  width: 1010px;
+  height: 667px;
+}
+body.square .kitchen {
+  left: 90px;
+  top: 400px;
+  width: 900px;
+  height: 594px;
+}
+.kitchen .board {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+.kitchen .tomato {
+  position: absolute;
+  width: 34%;
+  left: 33%;
+  bottom: 23%;
+  transform-origin: 50% 92%;
+}
+.kitchen .knife {
+  position: absolute;
+  width: 78%;
+  left: 18%;
+  bottom: 50%;
+  transform-origin: 30% 60%;
+}
+.kitchen .slice {
+  position: absolute;
+  width: 24%;
+  left: 38%;
+  bottom: 24%;
+  opacity: 0;
+  filter: drop-shadow(0 10px 8px rgba(60, 25, 5, 0.45));
+}
+.kitchen.dull-art {
+  filter: saturate(0.5) brightness(0.8);
+}
+.juice {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #c93a27;
+  left: 50%;
+  bottom: 30%;
+  opacity: 0;
+}
+
+/* ---------- Doorstep (pickup + back) ---------- */
+.doorway {
+  position: absolute;
+  aspect-ratio: 9 / 10;
+  border-radius: 28px;
+  overflow: hidden;
+  box-shadow: 0 40px 100px rgba(60, 40, 15, 0.28);
+}
+body.landscape .doorway {
+  right: 150px;
+  top: 90px;
+  height: 900px;
+}
+body.square .doorway {
+  left: 50%;
+  top: 380px;
+  height: 640px;
+  margin-left: -288px;
+}
+.doorway > svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.doorway .morning {
+  opacity: 0;
+}
+.doorway .bag {
+  position: absolute;
+  width: 34%;
+  left: 50%;
+  bottom: 13.4%;
+}
+.doorway .spark {
+  position: absolute;
+  width: 5%;
+  opacity: 0;
+}
+
+/* ---------- Logo / CTA ---------- */
+.glow {
+  position: absolute;
+  left: 50%;
+  top: 44%;
+  width: 1100px;
+  height: 900px;
+  margin: -450px 0 0 -550px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(53, 127, 87, 0.34), rgba(53, 127, 87, 0) 100%);
+}
+.end {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.end .logo {
+  width: 190px;
+  height: 190px;
+  margin-bottom: 40px;
+}
+.end .logo svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 24px 70px rgba(156, 204, 110, 0.3));
+}
+.end .name {
+  font-size: 124px;
+  font-family: "Instrument Serif", Georgia, serif;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+body.square .end .name {
+  font-size: 100px;
+  max-width: 800px;
+  line-height: 1.02;
+}
+.end .cta {
+  margin-top: 46px;
+  display: flex;
+  align-items: center;
+  gap: 26px;
+}
+body.square .end .cta {
+  flex-direction: column;
+  gap: 22px;
+}
+.end .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  padding: 22px 40px;
+  border-radius: 999px;
+  background: var(--lime);
+  color: #f4eee2;
+  font-size: 40px;
+  font-weight: 760;
+  letter-spacing: -0.02em;
+}
+.end .pill svg {
+  width: 38px;
+  height: 38px;
+}
+.end .url {
+  font-size: 40px;
+  font-weight: 600;
+  color: #536050;
+  letter-spacing: -0.01em;
+}

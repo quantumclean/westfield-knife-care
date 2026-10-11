@@ -42,3 +42,14 @@ describe("describeUnpaidStatus", () => {
     }
   });
 });
+
+describe("stampFor", () => {
+  it("labels every state in plain words and never echoes an unknown status", async () => {
+    const { stampFor } = await import("../src/lib/order-status.ts");
+    expect(stampFor("paid")).toBe("Booked");
+    expect(stampFor("pending")).toBe("Confirming");
+    expect(stampFor("failed")).toBe("Not booked");
+    expect(stampFor("expired")).toBe("Not booked");
+    expect(stampFor("weird_new_status")).toBe("Not booked");
+  });
+});

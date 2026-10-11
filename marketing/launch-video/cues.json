@@ -1,0 +1,143 @@
+{
+  "fps": 30,
+  "duration": 23,
+  "poster": 6.6,
+  "url": "sharp.usabiology.com",
+  "copy": {
+    "pickup": ["Picked up", "at your door."],
+    "back": ["Back on", "your doorstep."]
+  },
+  "scenes": [
+    {
+      "id": "dull",
+      "start": 0,
+      "end": 4.35
+    },
+    {
+      "id": "sharp",
+      "start": 4.5,
+      "end": 8.75
+    },
+    {
+      "id": "pickup",
+      "start": 8.75,
+      "end": 13.4
+    },
+    {
+      "id": "back",
+      "start": 13.3,
+      "end": 17.95
+    },
+    {
+      "id": "logo",
+      "start": 18.0,
+      "end": 23.0
+    }
+  ],
+  "music": [
+    {
+      "t": 0.0,
+      "until": 4.35,
+      "chord": "Am",
+      "mood": "dark"
+    },
+    {
+      "t": 4.5,
+      "until": 8.75,
+      "chord": "C",
+      "mood": "bright"
+    },
+    {
+      "t": 8.75,
+      "until": 13.3,
+      "chord": "F",
+      "mood": "warm"
+    },
+    {
+      "t": 13.3,
+      "until": 18.0,
+      "chord": "G",
+      "mood": "warm"
+    },
+    {
+      "t": 18.0,
+      "until": 23.0,
+      "chord": "C",
+      "mood": "resolve"
+    }
+  ],
+  "sfx": [
+    {
+      "t": 1.58,
+      "type": "thud"
+    },
+    {
+      "t": 1.65,
+      "type": "drag"
+    },
+    {
+      "t": 2.65,
+      "type": "drag"
+    },
+    {
+      "t": 4.5,
+      "type": "hit"
+    },
+    {
+      "t": 4.85,
+      "type": "ting"
+    },
+    {
+      "t": 5.4,
+      "type": "slice"
+    },
+    {
+      "t": 5.72,
+      "type": "tap"
+    },
+    {
+      "t": 5.8,
+      "type": "tap"
+    },
+    {
+      "t": 5.88,
+      "type": "tap"
+    },
+    {
+      "t": 5.96,
+      "type": "tap"
+    },
+    {
+      "t": 6.04,
+      "type": "tap"
+    },
+    {
+      "t": 10.4,
+      "type": "lift"
+    },
+    {
+      "t": 12.7,
+      "type": "morning"
+    },
+    {
+      "t": 14.3,
+      "type": "arrive"
+    },
+    {
+      "t": 14.92,
+      "type": "thud"
+    },
+    {
+      "t": 15.25,
+      "type": "sparkle"
+    },
+    {
+      "t": 18.0,
+      "type": "bloom"
+    },
+    {
+      "t": 18.4,
+      "type": "shimmer"
+    }
+  ]
+}

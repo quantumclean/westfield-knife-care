@@ -9,14 +9,19 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:browser": "playwright test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@apple/mapkit-loader": "^1.0.0",
+    "@fontsource/instrument-serif": "^5.3.0",
     "@wkc/shared": "workspace:*",
     "@wkc/ui": "workspace:*",
     "preact": "^10.29.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "jsdom": "^26.1.0",
     "@preact/preset-vite": "^2.10.6",
     "typescript": "^5.9.3",
     "vite": "^8.3.1",
