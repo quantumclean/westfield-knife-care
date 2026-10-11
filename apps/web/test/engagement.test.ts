@@ -128,6 +128,7 @@ describe("process film", () => {
       duration: 23,
       videoWidth: 1080,
       videoHeight: 1080,
+      paused: true,
       addEventListener: (type: string, fn: () => void) => listeners.set(type, fn),
       removeEventListener: () => {},
     };
@@ -189,5 +190,16 @@ describe("landing page observers", () => {
     expect(browser.events().map((e) => [e.name, e.props])).toEqual([
       ["checkout_returned", { outcome: "cancelled" }],
     ]);
+  });
+});
+
+describe("one source for film analytics", () => {
+  it("leaves play, progress and unmute to the DOM observer", async () => {
+    const { readFileSync } = await import("node:fs");
+    const source = readFileSync(
+      new URL("../src/sections/LaunchVideo.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(source).not.toMatch(/\btrack\(/);
   });
 });

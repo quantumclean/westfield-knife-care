@@ -56,7 +56,7 @@ or URLs.**
 | `page_view`          | page load of `/`, `/a`, `/b` or `/thanks`                                                                          |                                                                                    | view                | yes |
 | `cta_click`          | any Sharpen or Pilot button                                                                                        | `cta`: sharpen, pilot; `location` (below)                                          |                     | yes |
 | `booking_opened`     | booking sheet shown (step 1); also `checkout-cancelled` when Stripe's cancel link reopens it (no `cta_click` then) | `location`                                                                         |                     | yes |
-| `booking_step`       | step reached: `details` = first focus on a contact field                                                           | `step`: choose, details                                                            | booking, per step   | yes |
+| `booking_step`       | step 2 (your details) shown, or first focus on a contact field                                                     | `step`: choose, details                                                            | booking, per step   | yes |
 | `booking_closed`     | booking sheet closed before checkout started                                                                       | `step` reached when it closed                                                      | booking             | no  |
 | `booking_submitted`  | booking passed client validation                                                                                   | `knives` 1–50, `total_cents`                                                       |                     | yes |
 | `checkout_started`   | order created, redirecting to Stripe                                                                               | `total_cents`                                                                      |                     | yes |
@@ -72,7 +72,7 @@ or URLs.**
 | `video_view`         | the process film starts playing                                                                                    | `trigger`: autoplay, click, play; `format`: standard, landscape, square            | view                | yes |
 | `video_progress`     | film milestone reached                                                                                             | `percent`: 25, 50, 75, 100                                                         | view, per milestone | yes |
 | `video_unmute`       | sound turned on                                                                                                    | `format`, `at_seconds` 0–600                                                       | view                | no  |
-| `address_suggest`    | Apple address suggestions (PR #27/#28, when enabled)                                                               | `action`: shown, chosen, fallback, unavailable, out_of_area; `results`: 0, 1-3, 4+ | booking, per action | no  |
+| `address_suggest`    | Apple address suggestions (only when Maps is configured)                                                           | `action`: shown, chosen, fallback, unavailable, out_of_area; `results`: 0, 1-3, 4+ | booking, per action | no  |
 | `client_error`       | uncaught error, rejected promise, failed API call                                                                  | `kind`: error, rejection, api, chunk; `area`; `status`: network, 4xx, 5xx          | max 3 per view      | no  |
 | `web_vitals`         | first time the page is hidden                                                                                      | `lcp`, `inp`, `cls`, `ttfb`: good, needs_improvement, poor; `nav`                  | view                | no  |
 
@@ -86,6 +86,11 @@ or URLs.**
   Error messages and stacks are never sent.
 - A switch from booking to the waitlist is a `pilot_opened` with `location` `out-of-area`
   or `booking-closed`. There is no separate event.
+
+`address_suggest` actions: `shown` (suggestions listed, with a count band), `chosen` (one was
+picked), `out_of_area` (the picked address is outside the service area), `fallback` (the
+visitor opened the search, then typed the address by hand), `unavailable` (Apple's SDK failed
+to load). The search text, results and chosen address are never sent.
 
 The landing-page observers (sections, scroll, time, film, booking step and close) live in
 `apps/web/src/lib/engagement.ts`. They work from the DOM, so components need no tracking

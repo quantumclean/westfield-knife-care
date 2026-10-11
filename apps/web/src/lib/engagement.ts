@@ -116,6 +116,8 @@ export function watchVideo(video: HTMLVideoElement): () => void {
       });
     wasMuted = video.muted;
   };
+  // Already playing when this loaded (it is loaded on idle): count the view now.
+  if (!video.paused) onPlay();
   video.addEventListener("play", onPlay);
   video.addEventListener("timeupdate", onTime);
   video.addEventListener("ended", onEnded);

@@ -50,7 +50,9 @@ export function App({ session }: { session: Session }) {
       })
       .catch(() => {
         bookingModule = undefined; // let the next intent retry
-        if (reportFailure) setLoadFailed("book");
+        if (!reportFailure) return;
+        setLoadFailed("book");
+        track(EVENTS.client_error, { kind: "chunk", area: "booking" });
       });
   }, []);
   // Intent and idle prefetches stay quiet; only an explicit open reports failure.
@@ -64,6 +66,7 @@ export function App({ session }: { session: Session }) {
       .catch(() => {
         pilotModule = undefined;
         setLoadFailed("pilot");
+        track(EVENTS.client_error, { kind: "chunk", area: "pilot" });
       });
   };
 

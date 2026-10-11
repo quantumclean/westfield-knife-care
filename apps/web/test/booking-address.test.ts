@@ -279,3 +279,78 @@ describe("Apple selection in the controlled booking sheet", () => {
     expect(mocks.order).toHaveBeenCalledOnce();
   });
 });
+
+describe("analytics in the booking sheet: steps and suggestion outcomes, never typed values", () => {
+  const TYPED = [
+    "Ada Example",
+    "ada@example.com",
+    "9085550123",
+    "Apartment 4B",
+    "123 Elm",
+    "Elm Street",
+    "07090",
+    "10001",
+    "Side door",
+    "9 Oak Lane",
+  ];
+  async function tracked() {
+    const { track } = await import("../src/lib/analytics.ts");
+    return vi
+      .mocked(track)
+      .mock.calls.map(([name, props]) => [name, props ?? {}] as [string, Record<string, unknown>]);
+  }
+  async function expectNothingTyped() {
+    const text = JSON.stringify(await tracked());
+    for (const value of TYPED) expect(text).not.toContain(value);
+  }
+
+  it("records reaching step 2 and a shown, chosen suggestion", async () => {
+    await input("notes", "Side door");
+    await search();
+    await submit();
+    const calls = await tracked();
+    expect(calls).toContainEqual(["booking_step", { step: "details" }]);
+    expect(calls).toContainEqual(["address_suggest", { action: "shown", results: "1-3" }]);
+    expect(calls).toContainEqual(["address_suggest", { action: "chosen" }]);
+    expect(calls.filter(([, p]) => p.action === "fallback" || p.action === "out_of_area")).toEqual(
+      [],
+    );
+    await expectNothingTyped();
+  });
+
+  it("records an out-of-area suggestion", async () => {
+    mocks.search.mockResolvedValue({
+      places: [{ ...place, postCode: "10001", locality: "New York", administrativeAreaCode: "NY" }],
+    });
+    await search();
+    expect(await tracked()).toContainEqual(["address_suggest", { action: "out_of_area" }]);
+    await expectNothingTyped();
+  });
+
+  it("records a fallback when the address is typed after opening the search", async () => {
+    await openSearch();
+    await tick();
+    await input("line1", "9 Oak Lane");
+    expect(await tracked()).toContainEqual(["address_suggest", { action: "fallback" }]);
+    await expectNothingTyped();
+  });
+
+  it("records unavailable suggestions when the SDK fails", async () => {
+    mocks.load.mockRejectedValue(new Error("SDK unavailable"));
+    await click("Find address with Apple Maps");
+    await tick();
+    expect(await tracked()).toContainEqual(["address_suggest", { action: "unavailable" }]);
+  });
+
+  it("records form errors as field ids and kinds", async () => {
+    await input("email", "invalid");
+    await submit();
+    const [, props] = (await tracked()).find(([name]) => name === "form_error")!;
+    expect(props).toMatchObject({ form: "booking" });
+    expect(String(props.fields).split(",")).toEqual(
+      expect.arrayContaining(["email", "line1", "zip"]), // town defaults to Westfield
+    );
+    expect(String(props.kinds).split(",").sort()).toEqual(["format", "missing"]);
+    expect(JSON.stringify(props)).not.toContain("invalid");
+  });
+});

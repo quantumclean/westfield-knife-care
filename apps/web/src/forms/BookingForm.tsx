@@ -188,6 +188,8 @@ export function BookingDialog({
   // New step: start at the top, and put the cursor where typing starts.
   useEffect(() => {
     if (!open) return;
+    // Counted once per opening of the sheet (the catalog de-duplicates repeats).
+    if (step === 2) track(EVENTS.booking_step, { step: "details" });
     const form = formRef.current;
     form?.closest(".modal-body")?.scrollTo({ top: 0 });
     if (step === 2 && form) {
