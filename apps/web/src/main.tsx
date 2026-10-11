@@ -11,3 +11,10 @@ initAnalytics(session);
 track(EVENTS.page_view);
 
 render(<App session={session} />, document.getElementById("app")!);
+
+// Engagement measurement is not needed for the first paint: load it once the page is idle.
+const startEngagement = () =>
+  import("./lib/engagement.ts").then((m) => m.startEngagement()).catch(() => {});
+if (typeof requestIdleCallback === "function")
+  requestIdleCallback(startEngagement, { timeout: 3000 });
+else setTimeout(startEngagement, 1500);

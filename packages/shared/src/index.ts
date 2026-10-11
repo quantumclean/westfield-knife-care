@@ -6,5 +6,6 @@ export * from "./assignment.ts";
 export * from "./attribution.ts";
 export * from "./care-days.ts";
 export * from "./schemas.ts";
+export * from "./event-schemas.ts";
 export * from "./analytics.ts";
 export * from "./content.ts";

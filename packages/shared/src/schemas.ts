@@ -90,19 +90,6 @@ export const createWaitlistSchema = contextSchema.extend({
 });
 export type CreateWaitlistInput = z.infer<typeof createWaitlistSchema>;
 
-const eventPropValue = z.union([z.string().max(200), z.number(), z.boolean()]);
-
-export const createEventSchema = contextSchema.extend({
-  name: z
-    .string()
-    .trim()
-    .regex(/^[a-z][a-z0-9_]{2,49}$/),
-  visitor_id: visitorIdSchema,
-  page: z.string().trim().max(200).default("/"),
-  props: z.record(z.string().max(50), eventPropValue).default({}),
-});
-export type CreateEventInput = z.infer<typeof createEventSchema>;
-
 /** Operator updates recorded from the field: pickups, returns, feedback. */
 export const updateOrderSchema = z
   .object({

@@ -1,12 +1,20 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
+  DeleteCommand,
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
   QueryCommand,
 } from "@aws-sdk/lib-dynamodb";
 import type { AnalyticsEvent, Order, WaitlistEntry } from "@wkc/shared";
-import type { ListEventsOptions, ListOrdersOptions, Repository } from "./types.ts";
+import {
+  compareEventsDesc,
+  eventExpiresAt,
+  isBeforeCursor,
+  type ListEventsOptions,
+  type ListOrdersOptions,
+  type Repository,
+} from "./types.ts";
 
 /**
  * Single-table DynamoDB layout (see infrastructure/lambda/main.tf):
@@ -17,9 +25,9 @@ import type { ListEventsOptions, ListOrdersOptions, Repository } from "./types.t
  *   EVENT#<id>        EVENT     VISITOR#<vid>    created_at   ENTITY#event  created_at
  *
  * gsi1 answers "what has this email done", gsi2 lists an entity type newest
- * first. Events carry a TTL so the table does not grow forever.
+ * first. Events carry a TTL (EVENT_RETENTION_DAYS) so the table does not grow forever.
+ * Legacy AWS build only; Cloudflare uses D1Repository.
  */
-const EVENT_TTL_DAYS = 180;
 
 type Item = Record<string, unknown>;
 
@@ -94,26 +102,62 @@ export class DynamoRepository implements Repository {
     return items.map((i) => i.data as WaitlistEntry);
   }
 
-  async putEvent(event: AnalyticsEvent): Promise<void> {
-    const expires_at = Math.floor(
-      (new Date(event.created_at).getTime() + EVENT_TTL_DAYS * 86_400_000) / 1000,
-    );
-    await this.put({
-      pk: `EVENT#${event.id}`,
-      sk: "EVENT",
-      gsi1pk: `VISITOR#${event.visitor_id}`,
-      gsi1sk: event.created_at,
-      gsi2pk: "ENTITY#event",
-      gsi2sk: event.created_at,
-      entity: "event",
-      expires_at,
-      data: event,
-    });
+  async putEvents(events: AnalyticsEvent[]): Promise<void> {
+    for (const event of events) {
+      await this.doc
+        .send(
+          new PutCommand({
+            TableName: this.tableName,
+            Item: {
+              pk: `EVENT#${event.id}`,
+              sk: "EVENT",
+              gsi1pk: `VISITOR#${event.visitor_id}`,
+              gsi1sk: event.created_at,
+              gsi2pk: "ENTITY#event",
+              gsi2sk: event.created_at,
+              entity: "event",
+              expires_at: eventExpiresAt(event.created_at),
+              data: event,
+            },
+            ConditionExpression: "attribute_not_exists(pk)",
+          }),
+        )
+        .catch((error: unknown) => {
+          if ((error as { name?: string }).name !== "ConditionalCheckFailedException") throw error;
+        });
+    }
   }
 
   async listEvents(options: ListEventsOptions = {}): Promise<AnalyticsEvent[]> {
-    const items = await this.queryEntity("event", options.limit, options.since);
-    return items.map((i) => i.data as AnalyticsEvent);
+    const now = Math.floor(Date.now() / 1000);
+    const limit = Math.min(options.limit ?? 5000, 5000);
+    // Over-fetch from the upper bound, then apply the exact cursor and window in memory.
+    const items = await this.queryEntity("event", undefined, options.since);
+    return items
+      .map((i) => i.data as AnalyticsEvent)
+      .filter((e) => eventExpiresAt(e.created_at) > now)
+      .filter((e) => !options.until || e.created_at < options.until)
+      .filter((e) => !options.before || isBeforeCursor(e, options.before))
+      .sort(compareEventsDesc)
+      .slice(0, limit);
+  }
+
+  async deleteVisitorEvents(visitorId: string): Promise<number> {
+    const result = await this.doc.send(
+      new QueryCommand({
+        TableName: this.tableName,
+        IndexName: "gsi1",
+        KeyConditionExpression: "gsi1pk = :pk",
+        ExpressionAttributeValues: { ":pk": `VISITOR#${visitorId}` },
+      }),
+    );
+    const items = result.Items ?? [];
+    for (const item of items) {
+      await this.doc.send(
+        new DeleteCommand({ TableName: this.tableName, Key: { pk: item.pk, sk: item.sk } }),
+      );
+    }
+    return items.length;
   }
 
   private async put(item: Item): Promise<void> {

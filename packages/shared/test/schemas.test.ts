@@ -59,20 +59,37 @@ describe("createWaitlistSchema", () => {
 });
 
 describe("createEventSchema", () => {
-  it("bounds event names and props", () => {
-    const ok = createEventSchema.safeParse({
-      experiment_id: "experiment-001",
-      visitor_id: "visitor-12345678",
-      name: "cta_click",
-      props: { cta: "sharpen", location: "hero" },
-    });
-    expect(ok.success).toBe(true);
-    const bad = createEventSchema.safeParse({
-      experiment_id: "experiment-001",
-      visitor_id: "visitor-12345678",
-      name: "CTA CLICK",
-    });
-    expect(bad.success).toBe(false);
+  const v2 = {
+    v: 2,
+    event_id: "0b6f8f5e-1c1f-4a52-9b1e-6a4f3f1d2c3b",
+    view_id: "5d0e7f1a-2b3c-4d5e-8f90-a1b2c3d4e5f6",
+    experiment_id: "experiment-001",
+    visitor_id: "visitor-12345678",
+    route: "/a",
+    device: "mobile",
+    viewport: "sm",
+  };
+
+  it("accepts a catalog event and rejects malformed names", () => {
+    expect(
+      createEventSchema.safeParse({
+        ...v2,
+        name: "cta_click",
+        props: { cta: "sharpen", location: "hero" },
+      }).success,
+    ).toBe(true);
+    expect(createEventSchema.safeParse({ ...v2, name: "CTA CLICK" }).success).toBe(false);
+    expect(createEventSchema.safeParse({ ...v2, name: "made_up_event" }).success).toBe(false);
+  });
+
+  it("rejects unknown envelope keys such as a raw URL", () => {
+    expect(
+      createEventSchema.safeParse({
+        ...v2,
+        name: "page_view",
+        page_location: "https://sharp.usabiology.com/thanks?order=x",
+      }).success,
+    ).toBe(false);
   });
 });
 

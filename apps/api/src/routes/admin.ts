@@ -1,9 +1,10 @@
 import { Hono } from "hono";
-import { formatIssues, updateOrderSchema } from "@wkc/shared";
+import { MIN_REPORT_COUNT, formatIssues, updateOrderSchema } from "@wkc/shared";
 import type { Deps } from "../deps.ts";
 import { BODY_LIMITS, readJsonBody } from "../services/request-body.ts";
 import { safeEqual } from "../services/safe-equal.ts";
 import { updateOrder } from "../services/orders.ts";
+import { buildInsights, renderInsightsMarkdown } from "../services/insights.ts";
 import { buildSummary } from "../services/summary.ts";
 
 /**
@@ -56,6 +57,40 @@ export function adminRoutes(deps: Deps) {
   });
 
   app.get("/summary", async (c) => c.json(await buildSummary(deps, c.req.query("since"))));
+
+  /**
+   * Aggregate UX report: arms, acquisition, device, engagement and booking friction, with
+   * paid orders from Stripe-confirmed order state. `?since=&until=` (ISO), `?min_count=` (1-100,
+   * default 5) and `?format=markdown`. See docs/analytics-insights.md.
+   */
+  app.get("/insights", async (c) => {
+    const since = c.req.query("since");
+    const until = c.req.query("until");
+    const minCount = c.req.query("min_count");
+    const validDate = (v?: string) => v === undefined || !Number.isNaN(Date.parse(v));
+    const count = minCount === undefined ? MIN_REPORT_COUNT : Number(minCount);
+    if (
+      !validDate(since) ||
+      !validDate(until) ||
+      !Number.isInteger(count) ||
+      count < 1 ||
+      count > 100
+    )
+      return c.json({ error: "invalid_request" }, 400);
+    const insights = await buildInsights(
+      deps,
+      {
+        since: since && new Date(since).toISOString(),
+        until: until && new Date(until).toISOString(),
+      },
+      count,
+    );
+    if (c.req.query("format") === "markdown")
+      return c.text(renderInsightsMarkdown(insights), 200, {
+        "content-type": "text/markdown; charset=utf-8",
+      });
+    return c.json(insights);
+  });
 
   return app;
 }

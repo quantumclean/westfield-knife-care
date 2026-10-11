@@ -32,6 +32,8 @@ const ratePolicy = (path: string, method: string): { limit: number; scope: strin
   if (method === "POST" && path === "/api/orders") return { limit: 5, scope: "orders" };
   if (method === "POST" && path === "/api/waitlist") return { limit: 5, scope: "waitlist" };
   if (method === "POST" && path === "/api/events") return { limit: 120, scope: "events" };
+  if (method === "POST" && path === "/api/events/forget")
+    return { limit: 5, scope: "events-forget" };
   if (method === "GET" && orderRead.test(path)) return { limit: 120, scope: "order-read" };
   if (method === "POST" && feedbackWrite.test(path)) return { limit: 60, scope: "feedback-write" };
   if (path.startsWith("/api/admin/")) return { limit: 30, scope: "admin" };

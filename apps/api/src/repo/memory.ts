@@ -1,6 +1,9 @@
 import type { AnalyticsEvent, Order, WaitlistEntry } from "@wkc/shared";
 import {
   OrderWriteConflict,
+  compareEventsDesc,
+  eventExpiresAt,
+  isBeforeCursor,
   type ListEventsOptions,
   type ListOrdersOptions,
   type Repository,
@@ -51,13 +54,28 @@ export class MemoryRepository implements Repository {
     return structuredClone([...this.waitlist.values()].sort(byCreatedDesc));
   }
 
-  async putEvent(event: AnalyticsEvent): Promise<void> {
-    this.events.set(event.id, structuredClone(event));
+  async putEvents(events: AnalyticsEvent[]): Promise<void> {
+    for (const event of events) {
+      if (!this.events.has(event.id)) this.events.set(event.id, structuredClone(event));
+    }
   }
 
   async listEvents(options: ListEventsOptions = {}): Promise<AnalyticsEvent[]> {
-    let events = [...this.events.values()].sort(byCreatedDesc);
-    if (options.since) events = events.filter((e) => e.created_at >= options.since!);
-    return structuredClone(events.slice(0, options.limit ?? events.length));
+    const now = Math.floor(Date.now() / 1000);
+    const { since, until, before } = options;
+    const events = [...this.events.values()]
+      .filter((e) => eventExpiresAt(e.created_at) > now)
+      .filter((e) => (!since || e.created_at >= since) && (!until || e.created_at < until))
+      .filter((e) => !before || isBeforeCursor(e, before))
+      .sort(compareEventsDesc);
+    return structuredClone(events.slice(0, Math.min(options.limit ?? 5000, 5000)));
+  }
+
+  async deleteVisitorEvents(visitorId: string): Promise<number> {
+    let removed = 0;
+    for (const [id, event] of this.events) {
+      if (event.visitor_id === visitorId && this.events.delete(id)) removed += 1;
+    }
+    return removed;
   }
 }

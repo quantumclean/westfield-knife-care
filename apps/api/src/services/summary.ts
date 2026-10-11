@@ -1,5 +1,6 @@
 import { EXPERIMENTS, FUNNEL_STEPS, type AnalyticsEvent, type Order } from "@wkc/shared";
 import type { Deps } from "../deps.ts";
+import { readEvents } from "./event-reader.ts";
 
 export interface ExperimentSummary {
   experiment_id: string;
@@ -27,16 +28,19 @@ export interface ExperimentSummary {
 export interface Summary {
   generated_at: string;
   since: string | null;
+  /** True when the window held more events than one report reads (see MAX_REPORT_EVENTS). */
+  events_truncated: boolean;
   experiments: ExperimentSummary[];
 }
 
 /** Per-experiment funnel and economics, computed from stored events and orders. */
 export async function buildSummary(deps: Deps, since?: string): Promise<Summary> {
-  const [orders, waitlist, events] = await Promise.all([
+  const [orders, waitlist, read] = await Promise.all([
     deps.repo.listOrders(),
     deps.repo.listWaitlist(),
-    deps.repo.listEvents(since ? { since } : {}),
+    readEvents(deps.repo, since ? { since } : {}),
   ]);
+  const events = read.events;
   const inWindow = <T extends { created_at: string }>(x: T) => !since || x.created_at >= since;
 
   const experiments = EXPERIMENTS.map((experiment): ExperimentSummary => {
@@ -79,7 +83,12 @@ export async function buildSummary(deps: Deps, since?: string): Promise<Summary>
     };
   });
 
-  return { generated_at: deps.now().toISOString(), since: since ?? null, experiments };
+  return {
+    generated_at: deps.now().toISOString(),
+    since: since ?? null,
+    events_truncated: read.truncated,
+    experiments,
+  };
 }
 
 function uniqueVisitorsByStep(events: AnalyticsEvent[]): Record<string, number> {

@@ -1,4 +1,4 @@
-import type { CreateOrderInput, CreateWaitlistInput, Quote } from "@wkc/shared";
+import type { ClientErrorArea, CreateOrderInput, CreateWaitlistInput, Quote } from "@wkc/shared";
 
 export const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/$/, "");
 
@@ -33,6 +33,31 @@ export class ApiError extends Error {
   }
 }
 
+type FailureReporter = (area: ClientErrorArea, status: "network" | "4xx" | "5xx") => void;
+let reportFailure: FailureReporter | undefined;
+
+/** Analytics registers here to count failed API calls (area and status class only). */
+export function setApiFailureReporter(reporter: FailureReporter): void {
+  reportFailure = reporter;
+}
+
+function areaFor(path: string, method = "GET"): ClientErrorArea {
+  if (path === "/config") return "config";
+  if (path === "/orders" && method === "POST") return "booking";
+  if (path === "/waitlist") return "pilot";
+  if (/^\/orders\/[^/]+\/feedback$/.test(path)) return "feedback";
+  if (/^\/orders\/[^/]+$/.test(path)) return "order_status";
+  return "other";
+}
+
+function report(path: string, init: RequestInit, status: "network" | "4xx" | "5xx"): void {
+  try {
+    reportFailure?.(areaFor(path, init.method), status);
+  } catch {
+    // Reporting must never change what the caller sees.
+  }
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -49,6 +74,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       headers: { "content-type": "application/json", ...(init.headers ?? {}) },
     });
   } catch {
+    report(path, init, "network");
     throw new ApiError(0, MESSAGES.network, [], "network");
   }
   if (res.status === 204) return undefined as T;
@@ -62,6 +88,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 
   if (!res.ok) {
+    report(path, init, res.status >= 500 ? "5xx" : "4xx");
     // A missing or HTML body means nothing is answering for the API: static
     // hosting returns index.html or a 404/405 page for /api/* when it is not
     // wired to the Lambda.

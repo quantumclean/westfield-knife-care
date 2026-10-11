@@ -89,7 +89,8 @@ Before deployment, validate the bundle without changing Cloudflare state:
 npx --yes wrangler@latest deploy --dry-run --config workers/cleanup/wrangler.jsonc
 ```
 
-It removes expired analytics (>180 days) and short-lived rate-limit buckets.
+It removes expired analytics (>90 days once `migrations/0003_analytics_retention.sql`
+is applied) and short-lived rate-limit buckets.
 It does not delete customer order or waitlist records. Agree on their retention,
 deletion and backup rules before production.
 

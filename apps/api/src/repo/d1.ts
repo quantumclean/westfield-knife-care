@@ -1,6 +1,7 @@
 import type { AnalyticsEvent, Order, WaitlistEntry } from "@wkc/shared";
 import {
   OrderWriteConflict,
+  eventExpiresAt,
   type ListEventsOptions,
   type ListOrdersOptions,
   type Repository,
@@ -16,6 +17,8 @@ export interface D1Statement {
 
 export interface D1Database {
   prepare(query: string): D1Statement;
+  /** D1 runs a batch as one transaction; absent in some test doubles. */
+  batch?(statements: D1Statement[]): Promise<unknown[]>;
 }
 
 interface DataRow {
@@ -126,28 +129,57 @@ export class D1Repository implements Repository {
     return rows.results.map((row) => JSON.parse(row.data) as WaitlistEntry);
   }
 
-  async putEvent(event: AnalyticsEvent): Promise<void> {
-    const expiresAt = Math.floor(new Date(event.created_at).getTime() / 1000) + 180 * 86400;
-    await this.db
-      .prepare(
-        "INSERT INTO analytics_events (id, created_at, experiment_id, expires_at, data) " +
-          "VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
-      )
-      .bind(event.id, event.created_at, event.experiment_id, expiresAt, JSON.stringify(event))
-      .run();
+  async putEvents(events: AnalyticsEvent[]): Promise<void> {
+    const statements = events.map((event) =>
+      this.db
+        .prepare(
+          "INSERT INTO analytics_events (id, created_at, experiment_id, expires_at, data) " +
+            "VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
+        )
+        .bind(
+          event.id,
+          event.created_at,
+          event.experiment_id,
+          eventExpiresAt(event.created_at),
+          JSON.stringify(event),
+        ),
+    );
+    if (statements.length === 0) return;
+    if (this.db.batch) await this.db.batch(statements);
+    else for (const statement of statements) await statement.run();
   }
 
   async listEvents(options: ListEventsOptions = {}): Promise<AnalyticsEvent[]> {
-    const clause = options.since ? "AND created_at >= ? " : "";
-    const query =
-      "SELECT data FROM analytics_events " +
-      "WHERE expires_at > CAST(strftime('%s', 'now') AS INTEGER) " +
-      clause +
-      "ORDER BY created_at DESC LIMIT ?";
-    const statement = this.db.prepare(query);
-    const rows = options.since
-      ? await statement.bind(options.since, limitValue(options.limit)).all<DataRow>()
-      : await statement.bind(limitValue(options.limit)).all<DataRow>();
+    const clauses = ["expires_at > CAST(strftime('%s', 'now') AS INTEGER)"];
+    const values: (string | number)[] = [];
+    if (options.since) {
+      clauses.push("created_at >= ?");
+      values.push(options.since);
+    }
+    if (options.until) {
+      clauses.push("created_at < ?");
+      values.push(options.until);
+    }
+    if (options.before) {
+      clauses.push("(created_at < ? OR (created_at = ? AND id < ?))");
+      values.push(options.before.created_at, options.before.created_at, options.before.id);
+    }
+    const rows = await this.db
+      .prepare(
+        "SELECT data FROM analytics_events WHERE " +
+          clauses.join(" AND ") +
+          " ORDER BY created_at DESC, id DESC LIMIT ?",
+      )
+      .bind(...values, limitValue(options.limit))
+      .all<DataRow>();
     return rows.results.map((row) => JSON.parse(row.data) as AnalyticsEvent);
+  }
+
+  async deleteVisitorEvents(visitorId: string): Promise<number> {
+    const result = await this.db
+      .prepare("DELETE FROM analytics_events WHERE json_extract(data, '$.visitor_id') = ?")
+      .bind(visitorId)
+      .run();
+    return result.meta.changes;
   }
 }

@@ -94,6 +94,11 @@ export function loadSession(
   return { visitor_id, experiment, attribution };
 }
 
+/** The random visitor id this browser holds, if any (used by "Delete my analytics data"). */
+export function storedVisitorId(): string | null {
+  return read(KEYS.visitor);
+}
+
 /** Fields every API call carries so the backend can attribute it. */
 export function sessionContext(session: Session) {
   return {

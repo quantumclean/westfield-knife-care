@@ -10,7 +10,7 @@ import {
 } from "@wkc/shared";
 import { Button, Field, Input, Notice, Select, Textarea } from "@wkc/ui";
 import { ApiError, api } from "../lib/api.ts";
-import { EVENTS, track } from "../lib/analytics.ts";
+import { EVENTS, formErrorProps, track } from "../lib/analytics.ts";
 import { errorSummary, useFocusFirstInvalid } from "../lib/forms.ts";
 import {
   closedMessage,
@@ -109,20 +109,17 @@ export function BookingForm({ session, experiment }: BookingFormProps) {
         parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`),
       );
       setErrors(fieldErrors);
-      track(EVENTS.form_error, { form: "booking", fields: Object.keys(fieldErrors).join(",") });
+      track(EVENTS.form_error, formErrorProps("booking", parsed.error.issues, candidate));
       return;
     }
 
     setErrors({});
     setFailure(null);
     setSubmitting(true);
-    track(EVENTS.booking_submitted, { knives, care_day: careDay, total_cents: quote.total_cents });
+    track(EVENTS.booking_submitted, { knives, total_cents: quote.total_cents });
     try {
       const result = await api.createOrder(parsed.data);
-      track(EVENTS.checkout_started, {
-        order_id: result.order_id,
-        total_cents: result.quote.total_cents,
-      });
+      track(EVENTS.checkout_started, { total_cents: result.quote.total_cents });
       window.location.assign(result.checkout_url);
     } catch (error) {
       setSubmitting(false);

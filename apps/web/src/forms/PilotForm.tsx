@@ -2,7 +2,7 @@ import { useRef, useState } from "preact/hooks";
 import { CADENCES, SERVICE_INTERESTS, createWaitlistSchema } from "@wkc/shared";
 import { Button, Field, Input, Notice, Select, Textarea } from "@wkc/ui";
 import { ApiError, api } from "../lib/api.ts";
-import { EVENTS, track } from "../lib/analytics.ts";
+import { EVENTS, formErrorProps, track } from "../lib/analytics.ts";
 import { errorSummary, useFocusFirstInvalid } from "../lib/forms.ts";
 import { sessionContext, type Session } from "../lib/session.ts";
 
@@ -30,7 +30,7 @@ export function PilotForm({ session }: { session: Session }) {
     event.preventDefault();
     const form = new FormData(event.currentTarget as HTMLFormElement);
     const value = (key: string) => String(form.get(key) ?? "").trim();
-    const parsed = createWaitlistSchema.safeParse({
+    const candidate = {
       ...sessionContext(session),
       name: value("name"),
       email: value("email"),
@@ -38,12 +38,13 @@ export function PilotForm({ session }: { session: Session }) {
       service_interest: value("service_interest"),
       cadence: value("cadence"),
       notes: value("notes") || undefined,
-    });
+    };
+    const parsed = createWaitlistSchema.safeParse(candidate);
     if (!parsed.success) {
       const next: Record<string, string> = {};
       for (const issue of parsed.error.issues) next[issue.path.join(".")] ??= issue.message;
       setErrors(next);
-      track(EVENTS.form_error, { form: "pilot", fields: Object.keys(next).join(",") });
+      track(EVENTS.form_error, formErrorProps("pilot", parsed.error.issues, candidate));
       return;
     }
     setErrors({});

@@ -480,6 +480,54 @@ html {
 .footnote {
   font-size: 0.85rem;
 }
+.footer-link {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0.25rem 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+/* Privacy & analytics panel (footer) */
+.privacy-panel h3 {
+  font-size: 1.05rem;
+  margin: 1.25rem 0 0.5rem;
+}
+.privacy-panel ul {
+  padding-left: 1.2rem;
+  margin: 0;
+}
+.privacy-panel li + li {
+  margin-top: 0.5rem;
+}
+.privacy-toggle {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--color-border);
+  cursor: pointer;
+}
+.privacy-toggle input {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-top: 0.15rem;
+  flex: none;
+  accent-color: var(--color-primary);
+}
+.privacy-toggle strong {
+  display: block;
+}
+.privacy-actions {
+  margin: 1rem 0;
+}
+.privacy-contact {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+}
 
 /* Booking */
 .booking-form .form-row-3 {

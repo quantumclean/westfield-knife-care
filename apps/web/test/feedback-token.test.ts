@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { takeFeedbackToken, withoutFeedbackToken } from "../src/lib/feedback-token.ts";
+import { fakeSession, installBrowser } from "./fake-browser.ts";
 
 const TOKEN = "AbCdEfGhIjKlMnOpQrStUvWxYz012345";
 const SUCCESS = `https://sharp.example.com/thanks?order=id-1&ft=${TOKEN}&session_id=cs_test_1#top`;
@@ -66,52 +67,39 @@ describe("withoutFeedbackToken", () => {
 describe("analytics never sees the feedback token", () => {
   async function run(href: string) {
     vi.resetModules();
-    vi.stubEnv("VITE_GA4_MEASUREMENT_ID", "G-TEST123");
-    const url = new URL(href);
-    const win = {
-      location: { href, pathname: url.pathname, origin: url.origin },
-      gtag: undefined as unknown,
-      dataLayer: undefined as unknown,
-    };
-    const fetchBodies: string[] = [];
-    vi.stubGlobal("window", win);
-    vi.stubGlobal("document", { createElement: () => ({}), head: { appendChild: () => {} } });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (_url: string, init: RequestInit) => {
-        fetchBodies.push(String(init.body));
-        return new Response(null, { status: 204 });
-      }),
-    );
-    const { initAnalytics, track, EVENTS } = await import("../src/lib/analytics.ts");
-    const session = {
-      visitor_id: "visitor-00000001",
-      experiment: { experiment: { id: "experiment-001" }, offer: { id: "o" }, price: { id: "p" } },
-      attribution: { source: "direct", acquisition_channel: "direct" },
-    } as unknown as Parameters<typeof initAnalytics>[0];
-    initAnalytics(session);
+    // Google Analytics configured and opted into, on a landing page that carries the token in
+    // its URL: neither the first-party events nor anything handed to Google may contain it.
+    const browser = installBrowser({
+      href: href.replace("/thanks", "/"),
+      ga: "G-TEST123",
+      storage: { "wkc.privacy": JSON.stringify({ v: 1, measurement: "on", google: "granted" }) },
+    });
+    const { initAnalytics, track, flush, EVENTS } = await import("../src/lib/analytics.ts");
+    initAnalytics(fakeSession());
     track(EVENTS.page_view);
-    track(EVENTS.checkout_completed, { order_id: "id-1" });
-    const gtag = JSON.stringify(
-      ((win.dataLayer as ArrayLike<unknown>[]) ?? []).map((e) => Array.from(e)),
-    );
-    return { gtag, fetchBodies };
+    track(EVENTS.checkout_completed, { order_id: "id-1", total_cents: 3900 });
+    flush();
+    return {
+      gtag: JSON.stringify(browser.gtag()),
+      fetchBodies: browser.requests.map((r) => r.body),
+    };
   }
 
   it("sends no token after the page has sanitised its URL", async () => {
     const { gtag, fetchBodies } = await run(withoutFeedbackToken(SUCCESS));
     expect(gtag).toContain("page_location");
     expect(gtag).not.toContain(TOKEN);
-    expect(fetchBodies).toHaveLength(2);
+    expect(fetchBodies).toHaveLength(1);
     for (const body of fetchBodies) expect(body).not.toContain(TOKEN);
   });
 
-  it("still sends no token even if the URL somehow still carries it", async () => {
+  it("still sends no token, order id or Stripe session id even if the URL carries them", async () => {
     const { gtag, fetchBodies } = await run(SUCCESS);
     expect(gtag).toContain("page_location");
-    expect(gtag).toContain("order=id-1");
-    expect(gtag).not.toContain(TOKEN);
-    for (const body of fetchBodies) expect(body).not.toContain(TOKEN);
+    for (const secret of [TOKEN, "order=id-1", "id-1", "session_id", "cs_test_1"]) {
+      expect(gtag).not.toContain(secret);
+      for (const body of fetchBodies) expect(body).not.toContain(secret);
+    }
   });
 });
 
