@@ -503,6 +503,47 @@ html {
   font-size: 1.3rem;
 }
 
+/* Apple address search */
+.address-suggestions {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: var(--color-cream);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+.address-search-title {
+  margin-top: 0;
+  font-weight: 650;
+}
+.address-suggestions .field-hint {
+  margin-bottom: 0;
+}
+.address-results {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+  max-height: 16rem;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+.address-results li {
+  display: grid;
+  padding: 0.75rem;
+  cursor: pointer;
+}
+.address-results li + li {
+  border-top: 1px solid var(--color-border);
+}
+.address-results li[aria-selected="true"],
+.address-results li:hover {
+  background: var(--color-cream);
+}
+.address-results span {
+  font-size: 0.9rem;
+}
+
 /* Thanks page */
 .thanks {
   max-width: 640px;

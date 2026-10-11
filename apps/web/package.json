@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@apple/mapkit-loader": "^1.0.0",
     "@wkc/shared": "workspace:*",
     "@wkc/ui": "workspace:*",
     "preact": "^10.29.8"

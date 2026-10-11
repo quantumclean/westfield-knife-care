@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import {
   BRAND,
   createOrderSchema,
@@ -19,6 +19,8 @@ import {
   type ConfigState,
 } from "../lib/booking.ts";
 import { sessionContext, type Session } from "../lib/session.ts";
+import type { SuggestedAddress } from "../lib/address-autocomplete.ts";
+import { AddressSuggestions } from "./AddressSuggestions.tsx";
 
 export interface BookingFormProps {
   session: Session;
@@ -48,6 +50,23 @@ export function BookingForm({ session, experiment }: BookingFormProps) {
   const [configState, setConfigState] = useState<ConfigState>({ status: "loading" });
   const [configAttempt, setConfigAttempt] = useState(0);
   const formRef = useRef<HTMLFormElement>(null);
+  const applyAddress = useCallback((address: SuggestedAddress) => {
+    const form = formRef.current;
+    if (!form) return;
+    const fields = Object.entries(address).map(([name, value]) => ({
+      input: form.elements.namedItem(name),
+      value,
+    }));
+    if (fields.some(({ input }) => !(input instanceof HTMLInputElement))) return;
+    for (const { input, value } of fields) (input as HTMLInputElement).value = value;
+    setErrors((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(
+          ([path]) => !Object.keys(address).some((name) => path === `customer.address.${name}`),
+        ),
+      ),
+    );
+  }, []);
   useFocusFirstInvalid(formRef, errors);
 
   useEffect(() => {
@@ -223,6 +242,7 @@ export function BookingForm({ session, experiment }: BookingFormProps) {
           <Input id="phone" name="phone" type="tel" autocomplete="tel" />
         </Field>
       </div>
+      <AddressSuggestions formRef={formRef} onAddress={applyAddress} />
       <Field
         label="Pickup address"
         htmlFor="line1"
