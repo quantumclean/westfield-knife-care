@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isServedZip } from "./content.ts";
 import {
   ACQUISITION_CHANNELS,
   CADENCES,
@@ -41,6 +42,9 @@ export const sourceSchema = z
 export const acquisitionChannelSchema = z.enum(ACQUISITION_CHANNELS);
 export const visitorIdSchema = z.string().trim().min(8).max(64);
 
+/** Shown (and returned by the API) for a valid ZIP outside the service area. */
+export const OUT_OF_AREA = "We don't pick up in this ZIP code yet.";
+
 export const addressSchema = z.object({
   line1: trimmed(120),
   line2: optionalTrimmed(120),
@@ -53,13 +57,15 @@ export const addressSchema = z.object({
   zip: z
     .string()
     .trim()
-    .regex(/^\d{5}(-\d{4})?$/, "Enter a 5-digit ZIP code"),
+    .regex(/^\d{5}(-\d{4})?$/, "Enter a 5-digit ZIP code")
+    .refine(isServedZip, OUT_OF_AREA),
 });
 
 export const customerSchema = z.object({
   name: trimmed(120),
   email: emailSchema,
-  phone: phoneSchema.optional(),
+  // Required (owner decision, 2026-10-10): the pickup window is coordinated by text.
+  phone: phoneSchema,
   address: addressSchema,
 });
 

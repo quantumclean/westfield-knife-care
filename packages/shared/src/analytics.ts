@@ -13,6 +13,8 @@ export const EVENTS = {
   pilot_submitted: "pilot_submitted",
   faq_opened: "faq_opened",
   form_error: "form_error",
+  video_view: "video_view",
+  video_unmute: "video_unmute",
 } as const;
 
 export type EventName = (typeof EVENTS)[keyof typeof EVENTS];

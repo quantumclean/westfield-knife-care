@@ -1,6 +1,12 @@
 # Phase 2 proposal: booking and confirmation UX
 
-**Status: proposal only. Nothing in this document is implemented.**
+**Status: partly implemented (booking UX v2, 2026-10-10).** Items 1
+(quantity chips plus a 6+ stepper), 6 (short first step, sticky total and
+action, draft kept across a cancelled checkout) and the frontend half of 5
+(readable state labels, backoff polling) shipped, along with the mobile
+menu, skip link, stronger focus rings and thank-you headings from the
+audit list. Items 2, 3 (step two: address provider), 4 and the
+`payment_mode` field of 5 remain proposals.
 
 These changes alter what visitors see, so under `docs/launch-freeze.md` they
 wait until experiment-001 and experiment-002 conclude, or ship as a new,

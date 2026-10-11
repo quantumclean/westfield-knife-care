@@ -34,3 +34,17 @@ export function describeUnpaidStatus(status: string, supportEmail: string): Unpa
       };
   }
 }
+
+/** The word on the booking pass stamp. Readable labels only; the raw status is never shown. */
+export function stampFor(status: string): string {
+  switch (status) {
+    case "paid":
+      return "Booked";
+    case "pending":
+      return "Confirming";
+    case "refunded":
+      return "Refunded";
+    default:
+      return "Not booked";
+  }
+}

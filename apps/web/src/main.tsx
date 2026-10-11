@@ -1,4 +1,6 @@
 import { render } from "preact";
+import "@fontsource/instrument-serif/latin-400.css";
+import "@fontsource/instrument-serif/latin-400-italic.css";
 import "@wkc/ui/styles.css";
 import "./styles.css";
 import { App } from "./app.tsx";
