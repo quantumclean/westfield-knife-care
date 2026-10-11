@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "preact/hooks";
 import {
   BRAND,
   OUT_OF_AREA,
@@ -33,6 +33,8 @@ import {
 import { sessionContext, type Session } from "../lib/session.ts";
 import type { WaitlistPrefill } from "./PilotForm.tsx";
 import { US_STATES } from "../lib/us-states.ts";
+import { AddressSuggestions } from "./AddressSuggestions.tsx";
+import type { SuggestedAddress } from "../lib/address-autocomplete.ts";
 
 export interface BookingDialogProps {
   open: boolean;
@@ -200,6 +202,20 @@ export function BookingDialog({
   const zip = contact.zip.trim();
   const outOfArea = ZIP_PATTERN.test(zip) && !isServedZip(zip);
 
+  const applyAddress = useCallback((address: SuggestedAddress) => {
+    // Functional state keeps contact/autofill and apartment edits made during search.
+    setContact((current) => ({ ...current, ...address }));
+    setErrors((current) => {
+      const next = { ...current };
+      for (const key of ["line1", "city", "state", "zip"] as const) {
+        delete next[FIELD_PATHS[key]];
+      }
+      const zipError = BLUR_CHECKS.zip!.check(address.zip);
+      if (zipError) next[FIELD_PATHS.zip] = zipError;
+      return next;
+    });
+  }, []);
+
   const set = (key: ContactField) => (e: Event) => {
     const value = (e.currentTarget as HTMLInputElement).value;
     setContact((c) => ({ ...c, [key]: value }));
@@ -261,6 +277,8 @@ export function BookingDialog({
 
     setErrors({});
     setFailure(null);
+    // Flush before navigation, even if checkout starts inside the draft debounce.
+    saveDraft({ knives, care_day: careDay, contact });
     setSubmitting(true);
     track(EVENTS.booking_submitted, { knives, care_day: careDay, total_cents: quote.total_cents });
     try {
@@ -559,6 +577,7 @@ export function BookingDialog({
                 required
               />
             </Field>
+            <AddressSuggestions formRef={formRef} onAddress={applyAddress} />
             <Field
               label="Street address"
               htmlFor="bk-line1"

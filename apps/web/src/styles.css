@@ -1,5 +1,62 @@
 /* Page layout for the landing and thank-you pages; tokens and components live in @wkc/ui. */
 
+/* Optional address search stays in the sheet's scroll body, above manual fields. */
+.address-suggestions {
+  min-width: 0;
+  padding: 0.85rem;
+  border: 1.5px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--paper-deep);
+}
+.address-search-title {
+  margin: 0 0 0.5rem;
+  font-weight: 650;
+}
+.address-suggestions .btn {
+  white-space: normal;
+  min-height: 44px;
+}
+.address-suggestions .field-hint {
+  margin: 0.5rem 0 0;
+}
+.address-suggestions .field-hint:empty {
+  display: none;
+}
+.address-results {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+  max-height: min(16rem, 30dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+.address-results li {
+  display: grid;
+  min-height: 44px;
+  padding: 0.75rem;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.address-results li + li {
+  border-top: 1px solid var(--rule);
+}
+.address-results li[aria-selected="true"] {
+  background: var(--sky);
+  box-shadow: inset 3px 0 var(--forest);
+}
+@media (hover: hover) {
+  .address-results li:hover {
+    background: var(--sky);
+  }
+}
+.address-results span {
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+
 /* ---------- Header ---------- */
 .site-header {
   position: sticky;
