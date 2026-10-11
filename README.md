@@ -65,11 +65,16 @@ printed signing secret in `STRIPE_WEBHOOK_SECRET`.
 Useful commands:
 
 ```sh
-pnpm test         # vitest in packages/shared and apps/api
+pnpm test         # vitest across shared, API, and web
 pnpm typecheck    # tsc across the workspace
 pnpm lint         # prettier --check
 pnpm build        # web -> apps/web/dist, api -> apps/api/dist/index.mjs
+pnpm --filter @wkc/web test:browser  # local mocked browser checks
 ```
+
+Install Playwright Chromium first with `pnpm --filter @wkc/web exec playwright install chromium`.
+The browser checks also run in GitHub CI. See [Browser checks](docs/browser-checks.md) for
+coverage, production-preview testing, and using an existing system browser.
 
 Operator endpoints need the `x-admin-key` header (`ADMIN_API_KEY`):
 
