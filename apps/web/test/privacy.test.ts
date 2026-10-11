@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sanitizePageUrl, sanitizeReferrer } from "../src/lib/privacy-url.ts";
-import { installBrowser } from "./fake-browser.ts";
+import { fakeSession, installBrowser } from "./fake-browser.ts";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -44,6 +44,27 @@ describe("sanitizeReferrer", () => {
   });
 });
 
+describe("deletion key", () => {
+  it("creates one 43-character key per browser and sends only its SHA-256 with events", async () => {
+    vi.resetModules();
+    const browser = installBrowser();
+    const { deletionKey, deviceOwnerHash } = await import("../src/lib/consent.ts");
+    const key = deletionKey()!;
+    expect(key).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(deletionKey()).toBe(key);
+    expect(browser.storage.get("wkc.analytics_key")).toBe(key);
+    const hash = await deviceOwnerHash();
+    expect(hash).toMatch(/^[0-9a-f]{64}$/);
+    const { initAnalytics, track, flush, EVENTS } = await import("../src/lib/analytics.ts");
+    initAnalytics(fakeSession());
+    track(EVENTS.page_view);
+    flush();
+    await browser.drain();
+    expect(browser.events()[0]!.owner).toBe(hash);
+    expect(browser.requests.map((r) => r.body).join("")).not.toContain(key);
+  });
+});
+
 describe("privacy choices", () => {
   async function consent(options = {}) {
     vi.resetModules();
@@ -76,12 +97,18 @@ describe("privacy choices", () => {
         "wkc.visitor_id": "visitor-00000001",
         "wkc.attribution": '{"source":"flyer-a","acquisition_channel":"print"}',
         "wkc.experiment_id": "experiment-001",
+        "wkc.analytics_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
       },
     });
     expect(await forgetThisDevice("visitor-00000001")).toBe(true);
+    // Proof of possession: the key goes only to the erase request.
     expect(browser.requests).toEqual([
-      { url: "/api/events/forget", body: '{"visitor_id":"visitor-00000001"}' },
+      {
+        url: "/api/events/forget",
+        body: '{"visitor_id":"visitor-00000001","key":"kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"}',
+      },
     ]);
+    expect(browser.storage.has("wkc.analytics_key")).toBe(false);
     expect(browser.storage.has("wkc.visitor_id")).toBe(false);
     expect(browser.storage.has("wkc.attribution")).toBe(false);
     expect(browser.storage.get("wkc.experiment_id")).toBe("experiment-001");
@@ -89,7 +116,10 @@ describe("privacy choices", () => {
   });
 
   it("still stops counting locally when the server cannot be reached", async () => {
-    const { forgetThisDevice, measurementAllowed } = await consent({ status: "reject" });
+    const { forgetThisDevice, measurementAllowed } = await consent({
+      status: "reject",
+      storage: { "wkc.analytics_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk" },
+    });
     expect(await forgetThisDevice("visitor-00000001")).toBe(false);
     expect(measurementAllowed()).toBe(false);
   });

@@ -116,6 +116,10 @@ export function installBrowser(options: BrowserOptions = {}) {
     gtag(): unknown[][] {
       return (win.dataLayer ?? []).map((entry) => Array.from(entry as ArrayLike<unknown>));
     },
+    /** Let queued sends run (the owner hash is computed asynchronously). */
+    async drain() {
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 5));
+    },
     fire(on: "window" | "document", type: string) {
       (on === "window" ? win : doc).dispatchEvent(new Event(type));
     },

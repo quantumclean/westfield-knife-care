@@ -13,26 +13,14 @@ async function start() {
   const analytics = await import("../src/lib/analytics.ts");
   const engagement = await import("../src/lib/engagement.ts");
   analytics.initAnalytics(fakeSession());
-  const sent = () => {
+  const sent = async () => {
     analytics.flush();
+    await browser.drain();
     return browser.events().map((e) => [e.name, e.props]);
   };
   return { browser, sent, ...analytics, ...engagement };
 }
 
-/** A form field inside an open dialog whose value must never be read. */
-function field(name: string, inDialog = true, tagName = "INPUT") {
-  return {
-    tagName,
-    getAttribute: (attr: string) => (attr === "name" ? name : null),
-    closest: (selector: string) => (selector === "dialog[open]" && inDialog ? {} : null),
-    get value(): string {
-      throw new Error("analytics must not read field values");
-    },
-  };
-}
-
-const focus = (target: unknown) => ({ target }) as unknown as Event;
 const closeDialog = () => ({ target: { tagName: "DIALOG" } }) as unknown as Event;
 
 describe("coarse buckets", async () => {
@@ -71,37 +59,33 @@ describe("coarse buckets", async () => {
   });
 });
 
-describe("booking steps from the DOM", () => {
-  it("marks details reached on the first focus in the booking sheet, reading names only", async () => {
-    const { track, onFocusIn, sent, EVENTS } = await start();
+describe("booking steps are explicit, never inferred from focus", () => {
+  it("emits no step when a field gains focus", async () => {
+    const { browser, track, startEngagement, sent, EVENTS } = await start();
+    startEngagement();
     track(EVENTS.booking_opened, { location: "hero" });
-    expect(() => {
-      onFocusIn(focus(field("knives", true, "SELECT")));
-      onFocusIn(focus(field("email")));
-      onFocusIn(focus(field("phone")));
-    }).not.toThrow();
-    expect(sent()).toEqual([
-      ["booking_opened", { location: "hero" }],
-      ["booking_step", { step: "details" }],
-    ]);
+    const field = {
+      tagName: "INPUT",
+      getAttribute: () => "email",
+      closest: () => ({}),
+      get value(): string {
+        throw new Error("analytics must not read field values");
+      },
+    };
+    const focusin = new Event("focusin");
+    Object.defineProperty(focusin, "target", { value: field });
+    browser.doc.dispatchEvent(focusin);
+    expect((await sent()).map(([name]) => name)).toEqual(["booking_opened"]);
   });
 
-  it("ignores focus outside a dialog and in the waitlist form", async () => {
-    const { track, onFocusIn, sent, EVENTS } = await start();
-    onFocusIn(focus(field("email", false)));
-    track(EVENTS.pilot_opened, { location: "hero" });
-    onFocusIn(focus(field("email")));
-    expect(sent().map(([name]) => name)).toEqual(["pilot_opened"]);
-  });
-
-  it("records where an unfinished booking was closed", async () => {
-    const { track, onFocusIn, onDialogClose, sent, EVENTS } = await start();
+  it("records where an unfinished booking was closed, from the explicit step event", async () => {
+    const { track, onDialogClose, sent, EVENTS } = await start();
     track(EVENTS.booking_opened, { location: "hero" });
     onDialogClose(closeDialog());
     track(EVENTS.booking_opened, { location: "pricing" });
-    onFocusIn(focus(field("name")));
+    track(EVENTS.booking_step, { step: "details" });
     onDialogClose(closeDialog());
-    const closes = sent().filter(([name]) => name === "booking_closed");
+    const closes = (await sent()).filter(([name]) => name === "booking_closed");
     expect(closes).toEqual([
       ["booking_closed", { step: "choose" }],
       ["booking_closed", { step: "details" }],
@@ -113,7 +97,7 @@ describe("booking steps from the DOM", () => {
     track(EVENTS.booking_opened, { location: "hero" });
     track(EVENTS.checkout_started, { total_cents: 3900 });
     onDialogClose(closeDialog());
-    expect(sent().map(([name]) => name)).not.toContain("booking_closed");
+    expect((await sent()).map(([name]) => name)).not.toContain("booking_closed");
   });
 });
 
@@ -142,7 +126,7 @@ describe("process film", () => {
     listeners.get("volumechange")!();
     listeners.get("volumechange")!();
     listeners.get("ended")!();
-    expect(sent()).toEqual([
+    expect(await sent()).toEqual([
       ["video_view", { trigger: "autoplay", format: "square" }],
       ["video_progress", { percent: 25 }],
       ["video_progress", { percent: 50 }],
@@ -167,11 +151,11 @@ describe("landing page observers", () => {
     const stop = startEngagement();
     browser.state.dialogOpen = true;
     scroll(3200);
-    expect(sent()).toEqual([]);
+    expect(await sent()).toEqual([]);
     browser.state.dialogOpen = false;
     scroll(1200);
     browser.fire("window", "pagehide");
-    expect(sent()).toEqual([
+    expect(await sent()).toEqual([
       ["scroll_depth", { percent: 25 }],
       ["scroll_depth", { percent: 50 }],
       ["page_engagement", { time: "<10s", max_scroll: 50 }],
@@ -187,6 +171,7 @@ describe("landing page observers", () => {
     analytics.initAnalytics(fakeSession());
     startEngagement();
     analytics.flush();
+    await browser.drain();
     expect(browser.events().map((e) => [e.name, e.props])).toEqual([
       ["checkout_returned", { outcome: "cancelled" }],
     ]);

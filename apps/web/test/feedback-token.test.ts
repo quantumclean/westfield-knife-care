@@ -79,6 +79,7 @@ describe("analytics never sees the feedback token", () => {
     track(EVENTS.page_view);
     track(EVENTS.checkout_completed, { order_id: "id-1", total_cents: 3900 });
     flush();
+    await browser.drain();
     return {
       gtag: JSON.stringify(browser.gtag()),
       fetchBodies: browser.requests.map((r) => r.body),

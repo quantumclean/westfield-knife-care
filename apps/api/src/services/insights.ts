@@ -1,24 +1,28 @@
 import {
-  CATALOG,
   EXPERIMENTS,
   FLYER_ROUTES,
   MIN_REPORT_COUNT,
   SCROLL_MILESTONES,
   SECTIONS,
   VIDEO_MILESTONES,
-  isEventName,
-  onceKey,
-  type AnalyticsEvent,
   type Order,
 } from "@wkc/shared";
 import type { Deps } from "../deps.ts";
-import { readEvents, type EventWindow } from "./event-reader.ts";
+import type {
+  AnalyticsReport,
+  ReportWindow,
+  StepRow,
+  VisitorProfile,
+} from "../repo/analytics-report.ts";
 
 /**
  * Aggregate UX insight per experiment arm, for the operator only (behind the admin key).
  *
- * - Counts are unique visitors (random browser ids) unless named otherwise; no id, order,
- *   contact detail or free text ever appears in the output.
+ * - Built from store-side aggregates (`repo.analyticsReport`): D1 runs a handful of GROUP BY
+ *   queries and returns aggregate rows, so the Worker never loads raw events. Paid-order
+ *   device splits look up only the paid visitors, in small chunks.
+ * - Counts are unique visitors (random browser ids); no id, order, contact detail or free text
+ *   ever appears in the output.
  * - Paid orders and revenue come only from orders, whose payment status is set by Stripe's
  *   webhook. Client-side `checkout_completed` events are never used to count money.
  * - Breakdown rows with fewer than `min_count` visitors are suppressed (numbers become null).
@@ -99,6 +103,7 @@ export interface ArmInsights {
   by_device: SegmentRow[];
   by_viewport: SegmentRow[];
   health: {
+    /** Visitors with a client error, by `kind:<kind>` and by `area:<area>`. */
     client_errors: Record<string, number>;
     web_vitals: Record<string, Record<string, number>>;
   };
@@ -109,60 +114,12 @@ export interface Insights {
   window: { since: string | null; until: string | null };
   min_count: number;
   events_read: number;
-  events_truncated: boolean;
   duplicates_ignored: number;
   arms: ArmInsights[];
   notes: string[];
 }
 
-const LANDING = new Set(["/", "/a", "/b", "other"]);
-const INTERACTIONS = new Set([
-  "cta_click",
-  "booking_opened",
-  "pilot_opened",
-  "faq_opened",
-  "video_view",
-]);
 const isPaid = (o: Order) => o.payment_status === "paid" || o.payment_status === "refunded";
-
-/** Drop repeats of once-per-view events (same page load, same key). */
-export function dedupeEvents(events: AnalyticsEvent[]): {
-  events: AnalyticsEvent[];
-  duplicates: number;
-} {
-  const seen = new Set<string>();
-  const kept: AnalyticsEvent[] = [];
-  let duplicates = 0;
-  // Oldest first, so the first occurrence is the one kept.
-  for (const event of [...events].sort((a, b) => a.created_at.localeCompare(b.created_at))) {
-    const key =
-      isEventName(event.name) &&
-      CATALOG[event.name].once?.scope === "view" &&
-      event.view_id &&
-      event.view_id !== "legacy-v1"
-        ? `${event.view_id}|${onceKey(event.name, event.props)}`
-        : undefined;
-    if (key && seen.has(key)) {
-      duplicates += 1;
-      continue;
-    }
-    if (key) seen.add(key);
-    kept.push(event);
-  }
-  return { events: kept, duplicates };
-}
-
-/** Visitor ids that sent `name` (optionally only with matching props). */
-function visitorsWith(
-  events: AnalyticsEvent[],
-  name: string,
-  match?: (props: AnalyticsEvent["props"]) => boolean,
-): Set<string> {
-  const result = new Set<string>();
-  for (const e of events)
-    if (e.name === name && (!match || match(e.props))) result.add(e.visitor_id);
-  return result;
-}
 
 const rate = (num: number, den: number, digits = 4) =>
   den > 0 ? Math.round((num / den) * 10 ** digits) / 10 ** digits : null;
@@ -173,119 +130,59 @@ function countBy(values: Iterable<string>): Record<string, number> {
   return result;
 }
 
-/** One visitor's first-seen attributes in this arm. */
-interface Profile {
-  channel: string;
-  source: string;
-  device: string;
-  viewport: string;
+/** Funnel from step rows (each visitor is in exactly one row per arm) and paid orders. */
+function funnelOf(rows: StepRow[], paid: number): Funnel {
+  const sum = (key: keyof StepRow) => rows.reduce((n, r) => n + Number(r[key]), 0);
+  return {
+    visited: sum("visited"),
+    engaged: sum("engaged"),
+    cta_click: sum("cta"),
+    booking_opened: sum("opened"),
+    booking_details: sum("details"),
+    booking_submitted: sum("submitted"),
+    checkout_started: sum("checkout"),
+    paid,
+  };
 }
 
-function profiles(events: AnalyticsEvent[]): Map<string, Profile> {
-  const map = new Map<string, Profile>();
-  for (const e of [...events].sort((a, b) => a.created_at.localeCompare(b.created_at))) {
-    const known = map.get(e.visitor_id);
-    if (!known) {
-      map.set(e.visitor_id, {
-        channel: e.acquisition_channel,
-        source: e.source,
-        device: e.device ?? "unknown",
-        viewport: e.viewport ?? "unknown",
-      });
-    } else if (known.device === "unknown" && e.device && e.device !== "unknown") {
-      known.device = e.device;
-      known.viewport = e.viewport ?? known.viewport;
-    }
-  }
+function groupBy<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
+  const map = new Map<string, T[]>();
+  for (const item of items)
+    (map.get(key(item)) ?? map.set(key(item), []).get(key(item))!).push(item);
   return map;
 }
 
-function bounceRate(events: AnalyticsEvent[]): { views: number; rate: number | null } {
-  const views = new Map<string, { landing: boolean; engaged: boolean }>();
-  for (const e of events) {
-    if (!e.view_id || e.view_id === "legacy-v1") continue;
-    const view = views.get(e.view_id) ?? { landing: false, engaged: false };
-    if (e.name === "page_view" && LANDING.has(e.page)) view.landing = true;
-    if (
-      INTERACTIONS.has(e.name) ||
-      (e.name === "scroll_depth" && Number(e.props.percent) >= 50) ||
-      (e.name === "page_engagement" && e.props.time !== "<10s")
-    )
-      view.engaged = true;
-    views.set(e.view_id, view);
-  }
-  const landing = [...views.values()].filter((v) => v.landing);
-  return {
-    views: landing.length,
-    rate: rate(landing.filter((v) => !v.engaged).length, landing.length),
-  };
-}
-
-function engagedVisitors(events: AnalyticsEvent[]): Set<string> {
-  const result = new Set<string>();
-  for (const e of events) {
-    if (
-      INTERACTIONS.has(e.name) ||
-      (e.name === "scroll_depth" && Number(e.props.percent) >= 50) ||
-      (e.name === "page_engagement" && e.props.time !== "<10s")
-    )
-      result.add(e.visitor_id);
-  }
-  return result;
-}
-
-function funnelFor(events: AnalyticsEvent[], paidOrders: Order[]): Funnel {
-  return {
-    visited: visitorsWith(events, "page_view").size,
-    engaged: engagedVisitors(events).size,
-    cta_click: visitorsWith(events, "cta_click").size,
-    booking_opened: visitorsWith(events, "booking_opened").size,
-    booking_details: visitorsWith(events, "booking_step", (p) => p.step === "details").size,
-    booking_submitted: visitorsWith(events, "booking_submitted").size,
-    checkout_started: visitorsWith(events, "checkout_started").size,
-    paid: paidOrders.length,
-  };
-}
-
 function segmentRows(
-  keys: Iterable<string>,
-  keyOf: (visitor: string) => string,
-  events: AnalyticsEvent[],
-  paidOrders: Order[],
-  paidKey: (order: Order) => string,
+  rows: StepRow[],
+  dim: "channel" | "source" | "device" | "viewport",
+  paidBy: Record<string, number>,
   minCount: number,
 ): SegmentRow[] {
-  const visitors = new Map<string, Set<string>>();
-  for (const visitor of keys) {
-    const key = keyOf(visitor);
-    (visitors.get(key) ?? visitors.set(key, new Set()).get(key)!).add(visitor);
-  }
-  const opened = visitorsWith(events, "booking_opened");
-  const submitted = visitorsWith(events, "booking_submitted");
-  const paidBy = countBy(paidOrders.map(paidKey));
-  const rows: SegmentRow[] = [];
-  for (const key of new Set([...visitors.keys(), ...Object.keys(paidBy)])) {
-    const members = visitors.get(key) ?? new Set<string>();
-    const count = members.size;
+  const groups = groupBy(rows, (r) => r[dim]);
+  const out: SegmentRow[] = [];
+  for (const key of new Set([...groups.keys(), ...Object.keys(paidBy)])) {
+    const members = groups.get(key) ?? [];
+    const visitors = members.reduce((n, r) => n + r.visited, 0);
+    if (visitors === 0 && !paidBy[key]) continue;
     const paid = paidBy[key] ?? 0;
-    const suppressed = count < minCount;
-    rows.push({
+    const suppressed = visitors < minCount;
+    out.push({
       key,
-      visitors: suppressed ? null : count,
-      booking_opened: suppressed ? null : [...members].filter((v) => opened.has(v)).length,
-      booking_submitted: suppressed ? null : [...members].filter((v) => submitted.has(v)).length,
+      visitors: suppressed ? null : visitors,
+      booking_opened: suppressed ? null : members.reduce((n, r) => n + r.opened, 0),
+      booking_submitted: suppressed ? null : members.reduce((n, r) => n + r.submitted, 0),
       paid: suppressed ? null : paid,
-      paid_rate: suppressed ? null : rate(paid, count),
+      paid_rate: suppressed ? null : rate(paid, visitors),
       suppressed,
     });
   }
-  return rows.sort((a, b) => (b.visitors ?? -1) - (a.visitors ?? -1) || a.key.localeCompare(b.key));
+  return out.sort((a, b) => (b.visitors ?? -1) - (a.visitors ?? -1) || a.key.localeCompare(b.key));
 }
 
 function dropOffs(
   funnel: Funnel,
-  byDevice: Map<string, AnalyticsEvent[]>,
-  paidByDevice: Map<string, Order[]>,
+  byDevice: Map<string, StepRow[]>,
+  paidByDevice: Record<string, number>,
   minCount: number,
 ): DropOff[] {
   const steps: DropOff[] = [];
@@ -297,8 +194,8 @@ function dropOffs(
     const base = funnel[fromStep];
     if (base === 0) continue;
     let worst: DropOff["worst_device"] = null;
-    for (const [device, deviceEvents] of byDevice) {
-      const f = funnelFor(deviceEvents, paidByDevice.get(device) ?? []);
+    for (const [device, rows] of byDevice) {
+      const f = funnelOf(rows, paidByDevice[device] ?? 0);
       if (f[fromStep] < minCount) continue;
       const conversion = rate(f[to], f[fromStep])!;
       if (!worst || conversion < worst.conversion)
@@ -320,130 +217,91 @@ function dropOffs(
 
 function armInsights(
   experiment: (typeof EXPERIMENTS)[number],
-  allEvents: AnalyticsEvent[],
+  report: AnalyticsReport,
   orders: Order[],
+  profiles: Map<string, VisitorProfile>,
   waitlistSignups: number,
   minCount: number,
 ): ArmInsights {
-  const events = allEvents.filter((e) => e.experiment_id === experiment.id);
-  const armOrders = orders.filter((o) => o.experiment_id === experiment.id);
+  const id = experiment.id;
+  const rows = report.steps.filter((r) => r.experiment_id === id);
+  const armOrders = orders.filter((o) => o.experiment_id === id);
   const paidOrders = armOrders.filter(isPaid);
-  const people = profiles(events);
-  const funnel = funnelFor(events, paidOrders);
+  const funnel = funnelOf(rows, paidOrders.length);
   const visitors = funnel.visited;
   const revenue = paidOrders.reduce((sum, o) => sum + netRevenueCents(o), 0);
 
-  const deviceOf = (visitor?: string) => (visitor && people.get(visitor)?.device) || "unknown";
-  const byDevice = new Map<string, AnalyticsEvent[]>();
-  for (const e of events) {
-    const d = deviceOf(e.visitor_id);
-    (byDevice.get(d) ?? byDevice.set(d, []).get(d)!).push(e);
-  }
-  const paidByDevice = new Map<string, Order[]>();
-  for (const o of paidOrders) {
-    const d = deviceOf(o.visitor_id);
-    (paidByDevice.get(d) ?? paidByDevice.set(d, []).get(d)!).push(o);
-  }
+  const profileOf = (o: Order) => (o.visitor_id ? profiles.get(o.visitor_id) : undefined);
+  const paidByDevice = countBy(paidOrders.map((o) => profileOf(o)?.device ?? "unknown"));
+  const paidByViewport = countBy(paidOrders.map((o) => profileOf(o)?.viewport ?? "unknown"));
 
-  const viewers = [...visitorsWith(events, "page_view")];
-  const reached = visitorsWith(events, "booking_step", (p) => p.step === "details");
-  const submitted = visitorsWith(events, "booking_submitted");
-  const chose = visitorsWith(events, "address_suggest", (p) => p.action === "chosen");
-  const reachedWith = [...reached].filter((v) => chose.has(v));
-  const reachedWithout = [...reached].filter((v) => !chose.has(v));
-  const bounce = bounceRate(events);
-  const flyer = FLYER_ROUTES.find((r) => r.experiment_id === experiment.id);
-
-  const errorFields: string[] = [];
-  const errorKinds: string[] = [];
-  const formErrors = new Map<string, { fields: Set<string>; kinds: Set<string> }>();
-  for (const e of events.filter((e) => e.name === "form_error")) {
-    const entry = formErrors.get(e.visitor_id) ?? { fields: new Set(), kinds: new Set() };
-    for (const f of String(e.props.fields ?? "")
-      .split(",")
-      .filter(Boolean))
-      entry.fields.add(f);
-    for (const k of String(e.props.kinds ?? "")
-      .split(",")
-      .filter(Boolean))
-      entry.kinds.add(k);
-    formErrors.set(e.visitor_id, entry);
-  }
-  for (const entry of formErrors.values()) {
-    errorFields.push(...entry.fields);
-    errorKinds.push(...entry.kinds);
-  }
-
-  const uniquePer = (name: string, prop: string) => {
-    const seen = new Map<string, Set<string>>();
-    for (const e of events.filter((e) => e.name === name)) {
-      const key = String(e.props[prop] ?? "unknown");
-      (seen.get(key) ?? seen.set(key, new Set()).get(key)!).add(e.visitor_id);
-    }
-    return Object.fromEntries([...seen].map(([k, v]) => [k, v.size]));
-  };
-
-  const vitals: Record<string, Record<string, number>> = {};
-  for (const metric of ["lcp", "inp", "cls", "ttfb"]) {
-    vitals[metric] = countBy(
-      events
-        .filter((e) => e.name === "web_vitals" && typeof e.props[metric] === "string")
-        .map((e) => String(e.props[metric])),
+  const prop = (name: string, key: string) =>
+    Object.fromEntries(
+      report.props
+        .filter((p) => p.experiment_id === id && p.name === name && p.prop === key)
+        .map((p) => [p.value, p.visitors]),
     );
-  }
+  const named = (name: string) =>
+    report.names.find((n) => n.experiment_id === id && n.name === name)?.visitors ?? 0;
+  const errors = (kind: "field" | "kind") =>
+    Object.fromEntries(
+      report.form_errors
+        .filter((f) => f.experiment_id === id && f.kind === kind)
+        .map((f) => [f.value, f.visitors]),
+    );
+  const sum = (key: keyof StepRow) => rows.reduce((n, r) => n + Number(r[key]), 0);
+  const view = report.views.find((v) => v.experiment_id === id);
+  const sections = prop("section_view", "section");
+  const scroll = prop("scroll_depth", "percent");
+  const progress = prop("video_progress", "percent");
+  const locations = prop("pilot_opened", "location");
+  const flyer = FLYER_ROUTES.find((r) => r.experiment_id === id);
+  const chose = sum("details_chose");
+  const typed = sum("details_typed");
+
+  const clientErrors: Record<string, number> = {};
+  for (const [k, n] of Object.entries(prop("client_error", "kind"))) clientErrors[`kind:${k}`] = n;
+  for (const [k, n] of Object.entries(prop("client_error", "area"))) clientErrors[`area:${k}`] = n;
 
   return {
-    experiment_id: experiment.id,
+    experiment_id: id,
     name: experiment.name,
     status: experiment.status,
     flyer: flyer ? flyer.path : null,
     offer_version: experiment.offer_version,
     price_version: experiment.price_version,
     funnel,
-    drop_offs: dropOffs(funnel, byDevice, paidByDevice, minCount),
+    drop_offs: dropOffs(
+      funnel,
+      groupBy(rows, (r) => r.device),
+      paidByDevice,
+      minCount,
+    ),
     engagement: {
-      landing_views: bounce.views,
-      bounce_rate: bounce.rate,
-      section_reach: Object.fromEntries(
-        SECTIONS.map((s) => [s, visitorsWith(events, "section_view", (p) => p.section === s).size]),
-      ),
-      scroll_depth: Object.fromEntries(
-        SCROLL_MILESTONES.map((m) => [
-          String(m),
-          visitorsWith(events, "scroll_depth", (p) => p.percent === m).size,
-        ]),
-      ),
-      faq_openers: visitorsWith(events, "faq_opened").size,
+      landing_views: view?.landing_views ?? 0,
+      bounce_rate: view ? rate(view.bounced, view.landing_views) : null,
+      section_reach: Object.fromEntries(SECTIONS.map((s) => [s, sections[s] ?? 0])),
+      scroll_depth: Object.fromEntries(SCROLL_MILESTONES.map((m) => [String(m), scroll[m] ?? 0])),
+      faq_openers: named("faq_opened"),
       video: {
-        viewers: visitorsWith(events, "video_view").size,
-        ...Object.fromEntries(
-          VIDEO_MILESTONES.map((m) => [
-            `reached_${m}`,
-            visitorsWith(events, "video_progress", (p) => p.percent === m).size,
-          ]),
-        ),
-        unmuted: visitorsWith(events, "video_unmute").size,
+        viewers: named("video_view"),
+        ...Object.fromEntries(VIDEO_MILESTONES.map((m) => [`reached_${m}`, progress[m] ?? 0])),
+        unmuted: named("video_unmute"),
       },
     },
     booking: {
-      closed_at: uniquePer("booking_closed", "step"),
-      checkout_cancelled_returns: visitorsWith(events, "checkout_returned").size,
-      form_error_fields: countBy(errorFields),
-      form_error_kinds: countBy(errorKinds),
+      closed_at: prop("booking_closed", "step"),
+      checkout_cancelled_returns: named("checkout_returned"),
+      form_error_fields: errors("field"),
+      form_error_kinds: errors("kind"),
       waitlist_switches: Object.fromEntries(
-        Object.entries(uniquePer("pilot_opened", "location")).filter(([k]) =>
-          ["out-of-area", "booking-closed"].includes(k),
-        ),
+        Object.entries(locations).filter(([k]) => ["out-of-area", "booking-closed"].includes(k)),
       ),
-      address_suggestions: uniquePer("address_suggest", "action"),
+      address_suggestions: prop("address_suggest", "action"),
       submit_rate_with_suggestion:
-        reachedWith.length >= minCount
-          ? rate(reachedWith.filter((v) => submitted.has(v)).length, reachedWith.length)
-          : null,
+        chose >= minCount ? rate(sum("details_chose_submitted"), chose) : null,
       submit_rate_without_suggestion:
-        reachedWithout.length >= minCount
-          ? rate(reachedWithout.filter((v) => submitted.has(v)).length, reachedWithout.length)
-          : null,
+        typed >= minCount ? rate(sum("details_typed_submitted"), typed) : null,
     },
     outcomes: {
       orders_created: armOrders.length,
@@ -454,44 +312,19 @@ function armInsights(
       waitlist_signups: waitlistSignups,
     },
     by_channel: segmentRows(
-      viewers,
-      (v) => people.get(v)?.channel ?? "unknown",
-      events,
-      paidOrders,
-      (o) => o.acquisition_channel,
+      rows,
+      "channel",
+      countBy(paidOrders.map((o) => o.acquisition_channel)),
       minCount,
     ),
-    by_source: segmentRows(
-      viewers,
-      (v) => people.get(v)?.source ?? "unknown",
-      events,
-      paidOrders,
-      (o) => o.source,
-      minCount,
-    ),
-    by_device: segmentRows(
-      viewers,
-      deviceOf,
-      events,
-      paidOrders,
-      (o) => deviceOf(o.visitor_id),
-      minCount,
-    ),
-    by_viewport: segmentRows(
-      viewers,
-      (v) => people.get(v)?.viewport ?? "unknown",
-      events,
-      paidOrders,
-      (o) => (o.visitor_id && people.get(o.visitor_id)?.viewport) || "unknown",
-      minCount,
-    ),
+    by_source: segmentRows(rows, "source", countBy(paidOrders.map((o) => o.source)), minCount),
+    by_device: segmentRows(rows, "device", paidByDevice, minCount),
+    by_viewport: segmentRows(rows, "viewport", paidByViewport, minCount),
     health: {
-      client_errors: countBy(
-        events
-          .filter((e) => e.name === "client_error")
-          .map((e) => [e.props.kind, e.props.area, e.props.status].filter(Boolean).join(":")),
+      client_errors: clientErrors,
+      web_vitals: Object.fromEntries(
+        ["lcp", "inp", "cls", "ttfb"].map((m) => [m, prop("web_vitals", m)]),
       ),
-      web_vitals: vitals,
     },
   };
 }
@@ -506,31 +339,36 @@ function netRevenueCents(order: Order): number {
 
 export async function buildInsights(
   deps: Deps,
-  window: EventWindow,
+  window: ReportWindow,
   minCount: number = MIN_REPORT_COUNT,
 ): Promise<Insights> {
-  const [orders, waitlist, read] = await Promise.all([
-    deps.repo.listOrders(),
-    deps.repo.listWaitlist(),
-    readEvents(deps.repo, window),
-  ]);
   const inWindow = (at: string) =>
     (!window.since || at >= window.since) && (!window.until || at < window.until);
+  const [orders, waitlist, report] = await Promise.all([
+    deps.repo.listOrders(),
+    deps.repo.listWaitlist(),
+    deps.repo.analyticsReport(window),
+  ]);
   const windowOrders = orders.filter((o) => inWindow(o.created_at));
-  const { events, duplicates } = dedupeEvents(read.events);
+  const paidVisitors = [
+    ...new Set(windowOrders.filter(isPaid).flatMap((o) => (o.visitor_id ? [o.visitor_id] : []))),
+  ];
+  const profiles = new Map(
+    (await deps.repo.visitorProfiles(paidVisitors)).map((p) => [p.visitor_id, p]),
+  );
 
   return {
     generated_at: deps.now().toISOString(),
     window: { since: window.since ?? null, until: window.until ?? null },
     min_count: minCount,
-    events_read: read.events.length,
-    events_truncated: read.truncated,
-    duplicates_ignored: duplicates,
+    events_read: report.events_read,
+    duplicates_ignored: report.duplicates,
     arms: EXPERIMENTS.map((experiment) =>
       armInsights(
         experiment,
-        events,
+        report,
         windowOrders,
+        profiles,
         waitlist.filter((w) => w.experiment_id === experiment.id && inWindow(w.created_at)).length,
         minCount,
       ),
@@ -538,7 +376,7 @@ export async function buildInsights(
     notes: [
       "Visitors are unique random browser ids; one person on two devices counts twice.",
       "Paid orders and revenue come from Stripe-confirmed orders, never from browser events.",
-      "Paid by device or viewport joins an order to the device its browser first reported; orders without a matching browser id show as unknown.",
+      "Paid by device or viewport joins an order to the device its browser's page views reported; orders without a matching browser id show as unknown.",
       `Breakdown rows under ${minCount} visitors are suppressed (null).`,
       "Events are kept for 90 days; compare arms over the same window.",
     ],
@@ -575,7 +413,7 @@ export function renderInsightsMarkdown(insights: Insights): string {
     "# Westfield Knife Care: visitor insights",
     "",
     `Generated ${insights.generated_at}. Window: ${insights.window.since ?? "all retained"} to ${insights.window.until ?? "now"}. ` +
-      `${insights.events_read} events read${insights.events_truncated ? " (TRUNCATED: narrow the window)" : ""}, ` +
+      `${insights.events_read} events aggregated, ` +
       `${insights.duplicates_ignored} duplicates ignored.`,
     "",
     "## Arms side by side",

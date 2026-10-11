@@ -8,6 +8,13 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import type { AnalyticsEvent, Order, WaitlistEntry } from "@wkc/shared";
 import {
+  profilesFromEvents,
+  reportFromEvents,
+  type AnalyticsReport,
+  type ReportWindow,
+  type VisitorProfile,
+} from "./analytics-report.ts";
+import {
   compareEventsDesc,
   eventExpiresAt,
   isBeforeCursor,
@@ -142,7 +149,7 @@ export class DynamoRepository implements Repository {
       .slice(0, limit);
   }
 
-  async deleteVisitorEvents(visitorId: string): Promise<number> {
+  async deleteVisitorEvents(visitorId: string, ownerHash: string): Promise<number> {
     const result = await this.doc.send(
       new QueryCommand({
         TableName: this.tableName,
@@ -151,13 +158,32 @@ export class DynamoRepository implements Repository {
         ExpressionAttributeValues: { ":pk": `VISITOR#${visitorId}` },
       }),
     );
-    const items = result.Items ?? [];
+    const items = (result.Items ?? []).filter(
+      (item) => (item.data as AnalyticsEvent | undefined)?.owner === ownerHash,
+    );
     for (const item of items) {
       await this.doc.send(
         new DeleteCommand({ TableName: this.tableName, Key: { pk: item.pk, sk: item.sk } }),
       );
     }
     return items.length;
+  }
+
+  /** Legacy AWS build: aggregates in the Lambda from a full listing (not used on Cloudflare). */
+  async analyticsReport(window: ReportWindow = {}): Promise<AnalyticsReport> {
+    const items = await this.queryEntity("event", undefined, window.since);
+    const events = items
+      .map((i) => i.data as AnalyticsEvent)
+      .filter((e) => !window.until || e.created_at < window.until);
+    return reportFromEvents(events);
+  }
+
+  async visitorProfiles(visitorIds: string[]): Promise<VisitorProfile[]> {
+    const items = await this.queryEntity("event");
+    return profilesFromEvents(
+      items.map((i) => i.data as AnalyticsEvent),
+      visitorIds,
+    );
   }
 
   private async put(item: Item): Promise<void> {

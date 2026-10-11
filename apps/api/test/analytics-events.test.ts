@@ -1,10 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import type { AnalyticsEvent } from "@wkc/shared";
+import { ownerHashOf, type AnalyticsEvent } from "@wkc/shared";
 import { handlePagesApi } from "../src/cloudflare.ts";
 import { D1Repository } from "../src/repo/d1.ts";
 import { BODY_LIMITS } from "../src/services/request-body.ts";
-import { readEvents } from "../src/services/event-reader.ts";
 import { json, makeDeps, readJson } from "./helpers.ts";
 import { sqliteD1 } from "./sqlite-d1.ts";
 
@@ -144,33 +143,97 @@ describe("POST /api/events (schema v2)", () => {
   });
 });
 
-describe("POST /api/events/forget", () => {
-  it("erases only the requesting visitor's events", async () => {
-    const { app, deps } = makeDeps();
+describe("POST /api/events/forget (proof of possession)", () => {
+  const VICTIM_KEY = "v".repeat(43);
+  const ATTACKER_KEY = "a".repeat(43);
+
+  async function seed(app: ReturnType<typeof makeDeps>["app"]) {
+    const victim = await ownerHashOf(VICTIM_KEY);
+    const attacker = await ownerHashOf(ATTACKER_KEY);
     await app.request(
       "/api/events",
       json("POST", {
         events: [
-          event("page_view"),
-          event("page_view", {}, { visitor_id: "visitor-0000000z", view_id: uuid() }),
+          event("page_view", {}, { owner: victim }),
+          event("cta_click", { cta: "sharpen", location: "hero" }, { owner: victim }),
+          // Someone who learned the victim's visitor id plants events under their own key.
+          event("page_view", {}, { owner: attacker, view_id: uuid() }),
+          event(
+            "page_view",
+            {},
+            { visitor_id: "visitor-0000000z", owner: victim, view_id: uuid() },
+          ),
         ],
       }),
     );
+    return { victim, attacker };
+  }
+
+  it("erases only events whose owner matches the presented key, for that visitor", async () => {
+    const { app, deps } = makeDeps();
+    const { victim, attacker } = await seed(app);
+    const res = await app.request(
+      "/api/events/forget",
+      json("POST", { visitor_id: "visitor-0000000a", key: VICTIM_KEY }),
+    );
+    expect(res.status).toBe(204);
+    const left = await deps.repo.listEvents();
+    expect(left.map((e) => [e.visitor_id, e.owner])).toEqual(
+      expect.arrayContaining([
+        ["visitor-0000000a", attacker],
+        ["visitor-0000000z", victim],
+      ]),
+    );
+    expect(left).toHaveLength(2);
+  });
+
+  it("a visitor id alone authorises nothing", async () => {
+    const { app, deps } = makeDeps();
+    await seed(app);
     const res = await app.request(
       "/api/events/forget",
       json("POST", { visitor_id: "visitor-0000000a" }),
     );
-    expect(res.status).toBe(204);
-    expect((await deps.repo.listEvents()).map((e) => e.visitor_id)).toEqual(["visitor-0000000z"]);
+    expect(res.status).toBe(400);
+    expect(await deps.repo.listEvents()).toHaveLength(4);
   });
 
-  it("rejects anything but a visitor id", async () => {
-    const { app } = makeDeps();
+  it("someone else's key deletes nothing of the victim's, and the response does not tell", async () => {
+    const { app, deps } = makeDeps();
+    const { victim } = await seed(app);
     const res = await app.request(
       "/api/events/forget",
-      json("POST", { visitor_id: "visitor-0000000a", email: "ada@example.com" }),
+      json("POST", { visitor_id: "visitor-0000000a", key: ATTACKER_KEY }),
     );
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(204);
+    const left = await deps.repo.listEvents();
+    expect(left.filter((e) => e.owner === victim)).toHaveLength(3);
+    const wrong = await app.request(
+      "/api/events/forget",
+      json("POST", { visitor_id: "visitor-0000000a", key: "x".repeat(43) }),
+    );
+    expect(wrong.status).toBe(204);
+  });
+
+  it("rejects malformed keys and extra fields", async () => {
+    const { app } = makeDeps();
+    for (const body of [
+      { visitor_id: "visitor-0000000a", key: "short" },
+      { visitor_id: "visitor-0000000a", key: "v".repeat(43), email: "ada@example.com" },
+    ]) {
+      expect((await app.request("/api/events/forget", json("POST", body))).status).toBe(400);
+    }
+  });
+
+  it("does not store or echo the key, only its hash", async () => {
+    const { app, deps } = makeDeps();
+    await seed(app);
+    expect(JSON.stringify(await deps.repo.listEvents())).not.toContain(VICTIM_KEY);
+    const bad = await app.request(
+      "/api/events",
+      json("POST", event("page_view", {}, { owner: VICTIM_KEY })),
+    );
+    expect(bad.status).toBe(400);
   });
 });
 
@@ -212,7 +275,7 @@ describe("D1 analytics storage (SQLite with the real migrations)", () => {
     expect(await repo.listEvents()).toHaveLength(1);
   });
 
-  it("pages through every event, including ties on created_at", async () => {
+  it("pages the raw export with a cursor, including ties on created_at", async () => {
     const repo = new D1Repository(sqliteD1());
     const now = Date.now();
     const events = Array.from({ length: 12_345 }, (_, i) =>
@@ -222,12 +285,17 @@ describe("D1 analytics storage (SQLite with the real migrations)", () => {
       ),
     );
     for (let i = 0; i < events.length; i += 1000) await repo.putEvents(events.slice(i, i + 1000));
-    const read = await readEvents(repo, {});
-    expect(read.truncated).toBe(false);
-    expect(new Set(read.events.map((e) => e.id)).size).toBe(12_345);
-    const capped = await readEvents(repo, {}, 6000);
-    expect(capped).toMatchObject({ truncated: true });
-    expect(capped.events).toHaveLength(6000);
+    const seen = new Set<string>();
+    let before: { created_at: string; id: string } | undefined;
+    for (;;) {
+      const page = await repo.listEvents({ before, limit: 5000 });
+      expect(page.length).toBeLessThanOrEqual(5000);
+      for (const e of page) seen.add(e.id);
+      const last = page.at(-1);
+      if (!last) break;
+      before = { created_at: last.created_at, id: last.id };
+    }
+    expect(seen.size).toBe(12_345);
   });
 
   it("filters by window and hides expired rows", async () => {
@@ -248,9 +316,15 @@ describe("D1 analytics storage (SQLite with the real migrations)", () => {
   it("deletes one visitor's events", async () => {
     const repo = new D1Repository(sqliteD1());
     const now = new Date().toISOString();
-    await repo.putEvents([stored("ev-1", now), stored("ev-2", now, "visitor-0000000z")]);
-    expect(await repo.deleteVisitorEvents("visitor-0000000a")).toBe(1);
-    expect((await repo.listEvents()).map((e) => e.id)).toEqual(["ev-2"]);
+    const owner = "f".repeat(64);
+    await repo.putEvents([
+      { ...stored("ev-1", now), owner },
+      { ...stored("ev-2", now, "visitor-0000000z"), owner },
+      { ...stored("ev-3", now), owner: "0".repeat(64) },
+      stored("ev-4", now),
+    ]);
+    expect(await repo.deleteVisitorEvents("visitor-0000000a", owner)).toBe(1);
+    expect((await repo.listEvents()).map((e) => e.id).sort()).toEqual(["ev-2", "ev-3", "ev-4"]);
   });
 
   it("migration 0003 brings rows written under the 180-day policy down to 90 days", () => {
@@ -281,7 +355,7 @@ describe("Pages protection for the forget endpoint", () => {
         new Request("https://preview.example.test/api/events/forget", {
           method: "POST",
           headers: { "content-type": "application/json", "CF-Connecting-IP": "192.0.2.1" },
-          body: JSON.stringify({ visitor_id: "visitor-0000000a" }),
+          body: JSON.stringify({ visitor_id: "visitor-0000000a", key: "v".repeat(43) }),
         }),
         env,
       );

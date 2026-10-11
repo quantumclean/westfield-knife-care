@@ -432,3 +432,17 @@ export function onceKey(name: EventName, props: EventProps): string | undefined 
   if (!once) return undefined;
   return once.key ? `${name}:${String(props[once.key] ?? "")}` : name;
 }
+
+// ---------------------------------------------------------------------------
+// Proof of possession for self-service deletion.
+
+/** A browser's deletion key: 32 random bytes, base64url (43 characters). Never sent with events. */
+export const DELETION_KEY_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+/** What events carry instead: the SHA-256 of the key, hex. */
+export const OWNER_HASH_PATTERN = /^[0-9a-f]{64}$/;
+
+/** SHA-256 of a deletion key, as stored on each event (`owner`). */
+export async function ownerHashOf(key: string): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(key));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}

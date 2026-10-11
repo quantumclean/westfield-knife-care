@@ -3,7 +3,9 @@ import {
   ANALYTICS_SCHEMA_VERSION,
   DEVICE_CLASSES,
   EVENT_NAMES,
+  DELETION_KEY_PATTERN,
   MAX_EVENTS_PER_BATCH,
+  OWNER_HASH_PATTERN,
   ROUTES,
   VIEWPORT_BANDS,
   normalizeEvent,
@@ -40,6 +42,8 @@ export const createEventSchema = z
     source: sourceSchema.default("direct"),
     acquisition_channel: acquisitionChannelSchema.default("direct"),
     visitor_id: visitorIdSchema,
+    /** SHA-256 of this browser's deletion key; lets only that browser erase these events. */
+    owner: z.string().regex(OWNER_HASH_PATTERN).optional(),
     route: z.enum(ROUTES),
     device: z.enum(DEVICE_CLASSES),
     viewport: z.enum(VIEWPORT_BANDS),
@@ -112,4 +116,11 @@ export function parseEventPayload(
 }
 
 /** Body of `POST /api/events/forget`: the visitor id this browser holds. */
-export const forgetVisitorSchema = z.strictObject({ visitor_id: visitorIdSchema });
+/**
+ * Body of `POST /api/events/forget`: the visitor id and the browser's deletion key. Only events
+ * whose `owner` is the key's hash are erased, so knowing a visitor id alone deletes nothing.
+ */
+export const forgetVisitorSchema = z.strictObject({
+  visitor_id: visitorIdSchema,
+  key: z.string().regex(DELETION_KEY_PATTERN),
+});

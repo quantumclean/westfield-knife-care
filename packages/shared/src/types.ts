@@ -226,4 +226,6 @@ export interface AnalyticsEvent {
   view_id?: string;
   device?: string;
   viewport?: string;
+  /** SHA-256 of the sending browser's deletion key (proof of possession for erasure). */
+  owner?: string;
 }

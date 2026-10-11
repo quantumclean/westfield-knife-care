@@ -1,3 +1,4 @@
+import type { AnalyticsReport, ReportWindow, VisitorProfile } from "./analytics-report.ts";
 import {
   EVENT_RETENTION_DAYS,
   type AnalyticsEvent,
@@ -65,6 +66,13 @@ export interface Repository {
   putEvents(events: AnalyticsEvent[]): Promise<void>;
   /** Unexpired events, newest first (ties by id), at most `limit` (capped) per call. */
   listEvents(options?: ListEventsOptions): Promise<AnalyticsEvent[]>;
-  /** Erase one visitor's analytics events (privacy request); returns how many were removed. */
-  deleteVisitorEvents(visitorId: string): Promise<number>;
+  /**
+   * Erase one browser's analytics events (privacy request): rows with this visitor id whose
+   * `owner` is this deletion-key hash. Returns how many were removed.
+   */
+  deleteVisitorEvents(visitorId: string, ownerHash: string): Promise<number>;
+  /** Aggregates for /admin/summary and /admin/insights, computed by the store (no raw events). */
+  analyticsReport(window?: ReportWindow): Promise<AnalyticsReport>;
+  /** Device and viewport of specific visitors (paid-order joins), looked up in small chunks. */
+  visitorProfiles(visitorIds: string[]): Promise<VisitorProfile[]>;
 }

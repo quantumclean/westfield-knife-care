@@ -1,5 +1,12 @@
 import type { AnalyticsEvent, Order, WaitlistEntry } from "@wkc/shared";
 import {
+  profilesFromEvents,
+  reportFromEvents,
+  type AnalyticsReport,
+  type ReportWindow,
+  type VisitorProfile,
+} from "./analytics-report.ts";
+import {
   OrderWriteConflict,
   compareEventsDesc,
   eventExpiresAt,
@@ -71,11 +78,30 @@ export class MemoryRepository implements Repository {
     return structuredClone(events.slice(0, Math.min(options.limit ?? 5000, 5000)));
   }
 
-  async deleteVisitorEvents(visitorId: string): Promise<number> {
+  async deleteVisitorEvents(visitorId: string, ownerHash: string): Promise<number> {
     let removed = 0;
     for (const [id, event] of this.events) {
-      if (event.visitor_id === visitorId && this.events.delete(id)) removed += 1;
+      if (event.visitor_id === visitorId && event.owner === ownerHash && this.events.delete(id))
+        removed += 1;
     }
     return removed;
+  }
+
+  private windowEvents(window: ReportWindow = {}): AnalyticsEvent[] {
+    const now = Math.floor(Date.now() / 1000);
+    return [...this.events.values()].filter(
+      (e) =>
+        eventExpiresAt(e.created_at) > now &&
+        (!window.since || e.created_at >= window.since) &&
+        (!window.until || e.created_at < window.until),
+    );
+  }
+
+  async analyticsReport(window: ReportWindow = {}): Promise<AnalyticsReport> {
+    return reportFromEvents(this.windowEvents(window));
+  }
+
+  async visitorProfiles(visitorIds: string[]): Promise<VisitorProfile[]> {
+    return profilesFromEvents(this.windowEvents(), visitorIds);
   }
 }

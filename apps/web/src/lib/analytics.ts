@@ -16,7 +16,13 @@ import {
   type EventProps,
 } from "@wkc/shared";
 import { API_BASE, setApiFailureReporter } from "./api.ts";
-import { PRIVACY_CHANGED, googleAllowed, measurementAllowed } from "./consent.ts";
+import {
+  PRIVACY_CHANGED,
+  PRIVACY_KEY,
+  deviceOwnerHash,
+  googleAllowed,
+  measurementAllowed,
+} from "./consent.ts";
 import { startHealthReporting } from "./health.ts";
 import { sanitizePageUrl, sanitizeReferrer } from "./privacy-url.ts";
 import type { Session } from "./session.ts";
@@ -77,6 +83,8 @@ interface ViewState {
 }
 
 let state: ViewState | undefined;
+/** Hash of this browser's deletion key, attached to every event at send time. */
+let owner: Promise<string | undefined> = Promise.resolve(undefined);
 
 const newId = (): string =>
   typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
@@ -114,6 +122,7 @@ export function isSensitiveScreen(): boolean {
 
 /** Start measuring this page load. Safe to call once per page. */
 export function initAnalytics(current: Session): void {
+  owner = deviceOwnerHash();
   state = {
     session: current,
     viewId: newId(),
@@ -135,6 +144,11 @@ export function initAnalytics(current: Session): void {
       if (document.visibilityState === "hidden") flush();
     });
     window.addEventListener(PRIVACY_CHANGED, applyPrivacyChoices);
+    // A choice made in another tab applies here at once, too.
+    window.addEventListener("storage", (event: Event) => {
+      const key = (event as StorageEvent).key;
+      if (key === null || key === PRIVACY_KEY) applyPrivacyChoices();
+    });
   } catch {
     // Without listeners events still go out on the timer.
   }
@@ -247,22 +261,28 @@ export function flush(): void {
 }
 
 function send(events: Envelope[]): void {
-  try {
-    void fetch(`${API_BASE}/events`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ events }),
-      // Survives navigation to Stripe or the thank-you page.
-      keepalive: true,
+  void owner
+    .then((hash) => {
+      // A preference change between queueing and sending wins: nothing leaves after opt-out.
+      if (!measurementAllowed()) return undefined;
+      return fetch(`${API_BASE}/events`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          events: hash ? events.map((e) => ({ ...e, owner: hash })) : events,
+        }),
+        // Survives navigation to Stripe or the thank-you page.
+        keepalive: true,
+      });
     })
-      .then((res) => {
-        // Rate limited or the store is down: stop for this page load rather than retry.
-        if ((res.status === 429 || res.status === 503) && state) state.paused = true;
-      })
-      .catch(() => {});
-  } catch {
-    // Blocked by an extension, or no fetch: analytics must never break the page.
-  }
+    .then((res) => {
+      if (!res) return;
+      // Rate limited or the store is down: stop for this page load rather than retry.
+      if ((res.status === 429 || res.status === 503) && state) state.paused = true;
+    })
+    .catch(() => {
+      // Blocked by an extension, offline, or no fetch: analytics must never break the page.
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -278,6 +298,8 @@ function loadGoogle(): void {
   const id = import.meta.env.VITE_GA4_MEASUREMENT_ID;
   if (!state || !id || state.google === "loaded" || isSensitiveScreen()) return;
   const { session } = state;
+  // Google's own opt-out switch: off while consent stands, set again on withdrawal.
+  (window as unknown as Record<string, unknown>)[`ga-disable-${id}`] = false;
   window.dataLayer = window.dataLayer ?? [];
   window.gtag = function gtag() {
     // eslint-disable-next-line prefer-rest-params
@@ -316,6 +338,9 @@ function loadGoogle(): void {
 function stopGoogle(): void {
   if (!state) return;
   state.google = "off";
+  const id = import.meta.env.VITE_GA4_MEASUREMENT_ID;
+  // Stops gtag.js sending anything further, including hits it had already queued.
+  if (id) (window as unknown as Record<string, unknown>)[`ga-disable-${id}`] = true;
   window.gtag?.("consent", "update", { analytics_storage: "denied" });
   try {
     const host = window.location.hostname.split(".");

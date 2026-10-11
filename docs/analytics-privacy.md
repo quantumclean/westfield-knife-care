@@ -57,15 +57,31 @@ two minutes (`migrations/0002_rate_limits.sql`); it never stores the IP itself.
 | Rate-limit buckets       | D1 `api_rate_limits`    | about 2 minutes              | Daily cleanup Worker                                                      |
 | Privacy choices          | Browser `wkc.privacy`   | until the visitor clears it  | The visitor                                                               |
 | Browser id, attribution  | Browser localStorage    | until cleared or self-delete | "Delete my analytics data", or clearing site data                         |
+| Deletion key             | Browser localStorage    | until cleared or self-delete | "Delete my analytics data"; events store only its SHA-256 (`owner`)       |
 | Orders, waitlist entries | D1 `orders`, `waitlist` | owner policy (not automated) | Owner, on request to the support address                                  |
 | Payments                 | Stripe                  | Stripe's policy              | Stripe dashboard                                                          |
 | GA4 (if enabled)         | Google                  | set in the GA4 property      | GA4 data-retention setting (choose 2 months) and its user-deletion tool   |
 
-- **Self-delete.** "Delete my analytics data" calls `POST /api/events/forget` with the
-  browser's random id. That id is known only to that browser. The API deletes every event
-  with that id. The browser then forgets its id and attribution and turns counting off;
-  it keeps its assigned price arm, so the price shown does not change. The endpoint
-  accepts nothing but the id and is limited to 5 calls per minute per IP.
+- **Self-delete, with proof of possession.**
+  - Each browser creates a random 256-bit deletion key on first use (`wkc.analytics_key`).
+    Events never carry the key, only its SHA-256 as `owner`.
+  - "Delete my analytics data" sends `POST /api/events/forget` with the browser id and
+    the key. The API hashes the key and deletes only events with that id **and** that
+    `owner`.
+  - Knowing a visitor id (for example from an order export or a shared device) is not
+    enough: without the key the request is rejected, and a wrong key deletes nothing.
+  - Events someone planted under another browser's id carry the planter's own hash, so
+    they cannot be used to delete the real visitor's events either.
+  - The response is the same whether or not anything matched, so the endpoint cannot be
+    used to probe for visitor ids.
+  - The endpoint accepts nothing but the id and key, and is limited to 5 calls per minute
+    per IP.
+  - Afterwards the browser forgets its id, attribution and key and turns counting off. It
+    keeps its price arm, so the price shown does not change.
+  - Limits: events recorded before this release, or from browsers without Web Crypto,
+    have no `owner` and can't be self-deleted. They expire within 90 days, or the owner
+    deletes them on request. Clearing site data loses the key, and with it self-service
+    deletion of earlier events.
 - **Retention change.** v1 wrote a 180-day expiry. Code from this release writes 90 days.
   Existing rows are brought down to 90 days by `migrations/0003_analytics_retention.sql`,
   which the owner applies (staging first). See `docs/d1-retention-cleanup.md`.
@@ -95,16 +111,38 @@ Owner decisions (2026-10-11, issue #29):
 - **No banner.** The launch freeze favours no visible change to the booking flow. The only
   visible change is a footer link, identical in both arms.
 
-### Legal context, to confirm with counsel
+### Compliance caveats (engineering notes, not legal advice; confirm with counsel)
 
-- The **New Jersey Data Privacy Act** (in force since 15 January 2025) applies to controllers
+The defaults above are the owner's product decisions for a one-town US pilot. They are
+**not** assumed to be legally sufficient everywhere.
+
+- **New Jersey Data Privacy Act** (in force since 15 January 2025): applies to controllers
   of personal data of 100,000+ NJ consumers a year, or 25,000+ if they derive revenue from
-  selling personal data. A one-town pilot is very likely below both thresholds, so its
-  universal opt-out (GPC) duty would not bind. The design honours GPC for third parties
-  anyway.
-- No data is sold and there is no targeted advertising.
-- EU/UK visitors are not targeted. If that changes, GA4 opt-in already matches the
-  consent-first model those rules expect.
+  selling personal data.
+  - A one-town pilot is very likely below both thresholds, so its duty to honour universal
+    opt-outs (GPC) would likely not bind.
+  - The design honours GPC for third parties anyway. Recheck if traffic grows or data is
+    ever sold or shared.
+- **Other US state laws** (California CCPA/CPRA; Colorado, Connecticut, Texas, Oregon and
+  others) have their own thresholds, and some require honouring GPC as an opt-out of sale
+  or sharing. Out-of-state visitors are possible. If the business crosses a threshold, review:
+  - whether first-party counts on by default are acceptable
+  - the notice-at-collection wording
+  - the response deadlines for access and deletion requests
+- **EU/UK visitors (GDPR, ePrivacy/PECR):** storing a browser id in localStorage for
+  analytics generally needs **prior consent** there; an opt-out is not enough. If those
+  visitors are ever targeted, counts must become opt-in for them, and GA4 opt-in alone
+  would not be sufficient.
+- **Google Analytics terms** require a privacy notice that discloses GA's use and cookies
+  before enabling it. The footer panel is a notice about measurement, **not** a full privacy
+  policy. Publish one (covering orders, payments, contact data and retention) before
+  enabling GA4, or sooner.
+- **Do Not Track** has no legal force in most places. Honouring it for third parties is a
+  courtesy.
+- **Orders and waitlist data** (names, addresses, phones) are outside this analytics scope.
+  Their retention and deletion still need an owner policy.
+- No data is sold and there is no targeted advertising. If that ever changes, every item
+  above needs revisiting.
 
 ## Sensitive screens
 
@@ -148,12 +186,54 @@ before any production use):
 - Reporting endpoints (`/api/admin/summary`, `/api/admin/insights`, `/api/admin/events`)
   sit behind the existing `x-admin-key` check and rate limit. The insights output contains
   aggregates only.
+- **Preference changes take effect immediately:**
+  - every event is re-checked against the current choice when queued, again when flushed,
+    and again just before the request is made
+  - turning counts off drops queued events and stops everything after it
+  - withdrawing Google consent sets Consent Mode `analytics_storage` to denied and Google's
+    `ga-disable-<id>` switch, then removes `_ga` cookies
+  - a choice made in another tab applies through the `storage` event
+  - only a request already in flight cannot be recalled
+
+## Reporting at scale
+
+- Reports never load raw events into the Worker. `/admin/summary` and `/admin/insights`
+  call `repo.analyticsReport`, which on D1 runs six `GROUP BY` queries over the window.
+  Each is one range scan of `analytics_events` by `created_at`.
+- The Worker receives only aggregate rows. Their number is bounded by arms × device ×
+  viewport × channel × source and by the allowlisted enums, not by traffic. The 200,000-event
+  test returns 62 rows.
+- Paid orders by device look up only paid visitors, 50 at a time, through the index from
+  `migrations/0004_analytics_visitor_index.sql`. Deletion uses the same index.
+- The SQL is checked against a reference implementation (`reportFromEvents`) by a contract
+  test, so the D1 and in-memory numbers agree.
+- **Measured locally:** 200,000 events aggregate in about 7.5 s on Node's SQLite. Real D1
+  performance differs and has not been measured; the staging steps include a check.
+
+Remaining limits:
+
+1. **D1 rows read.** Each report reads about 6 rows per event in the window. The full
+   90-day window at 200k events is about 1.2M rows read per report; the Workers Free plan
+   allows 5M a day at the time of writing. Use `since`/`until` (for example weekly), or the
+   Paid plan.
+2. **D1 query time.** D1 limits query duration (about 30 s at the time of writing). The scans
+   grow linearly. Beyond roughly 1–2 million events in one window, narrow the window or add
+   a nightly rollup table. A rollup is not built here.
+3. **No cache.** Every call recomputes. Admin traffic is rate-limited to 30 requests a
+   minute.
+4. **Raw export.** `/admin/events` is capped at 5,000 rows per call, newest first. It is for
+   spot checks; use the report for analysis.
+5. **Legacy AWS build.** The DynamoDB repository still aggregates in the Lambda from a full
+   listing. It is not used on Cloudflare.
+6. **Distinct visitors per segment.** A visitor is assigned one device, viewport, channel
+   and source per arm (from their page views). Someone who switched devices counts once,
+   under the larger value.
 
 ## Costs
 
 First-party analytics runs on the existing Cloudflare Pages Functions and D1. Each event
 insert is about 3 D1 "rows written": the row plus two indexes. On the Workers Free plan
 (100,000 rows written and 5 million read per day, at the time of writing), that is roughly
-3,000 ten-event visits a day before limits matter. One insights report reads each retained
-event once. Check Cloudflare's current D1 pricing before scaling. GA4 standard and Clarity
+3,000 ten-event visits a day before limits matter. One report reads about six rows per
+event in its window (see "Reporting at scale"). Check Cloudflare's current D1 pricing before scaling. GA4 standard and Clarity
 are free. Nothing in this change adds a paid service.

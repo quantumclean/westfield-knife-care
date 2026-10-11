@@ -51,12 +51,11 @@ Parameters:
   fewer than `min_count` visitors. Arm totals are never suppressed.
 - **Revenue** is net of Stripe refunds. Paid orders by device or viewport are matched to the
   device their browser first reported; orders without a matching browser id are `unknown`.
-- **Window.** Events are kept 90 days. `events_truncated: true` means more than 200,000
-  events fell in the window; narrow it.
-- **Cost of a report.** The report reads every event in the window, so a long window costs
-  D1 reads and Worker CPU time. The Workers Free plan's per-request CPU limit can cut off a
-  large report (as it can `/summary`). Use `since`/`until` to report a week at a time, or
-  run it on the Workers Paid plan.
+- **Window.** Events are kept 90 days. `events_read` is how many events were aggregated.
+- **Cost of a report.** D1 aggregates the events, and only summary rows reach the Worker, so
+  Worker CPU and memory stay small whatever the traffic. D1 still reads about six rows per
+  event in the window. Report a week at a time with `since`/`until` once traffic grows. See
+  "Reporting at scale" in `docs/analytics-privacy.md` for measured numbers and limits.
 
 ## Reading it well
 
@@ -71,7 +70,7 @@ Parameters:
     specific field is the problem (for example `phone` with `format`)
   - **large `checkout_started → paid` loss:** Stripe checkout or cold feet; check
     `booking.checkout_cancelled_returns`
-- `health.client_errors` with `api:booking:5xx` or `chunk` means real failures. Check the
+- `health.client_errors` with `kind:api`, `kind:chunk` or `area:booking` means real failures. Check the
   Cloudflare logs for that time.
 - GA4 (if ever enabled) sees only opted-in visitors, so its numbers will be far lower. Do
   not compare them with these.

@@ -1,6 +1,6 @@
-import { EXPERIMENTS, FUNNEL_STEPS, type AnalyticsEvent, type Order } from "@wkc/shared";
+import { EXPERIMENTS, FUNNEL_STEPS, type Order } from "@wkc/shared";
 import type { Deps } from "../deps.ts";
-import { readEvents } from "./event-reader.ts";
+import type { AnalyticsReport } from "../repo/analytics-report.ts";
 
 export interface ExperimentSummary {
   experiment_id: string;
@@ -28,19 +28,17 @@ export interface ExperimentSummary {
 export interface Summary {
   generated_at: string;
   since: string | null;
-  /** True when the window held more events than one report reads (see MAX_REPORT_EVENTS). */
-  events_truncated: boolean;
   experiments: ExperimentSummary[];
 }
 
 /** Per-experiment funnel and economics, computed from stored events and orders. */
 export async function buildSummary(deps: Deps, since?: string): Promise<Summary> {
-  const [orders, waitlist, read] = await Promise.all([
+  // Event counts are aggregated by the store; no raw events are loaded here.
+  const [orders, waitlist, report] = await Promise.all([
     deps.repo.listOrders(),
     deps.repo.listWaitlist(),
-    readEvents(deps.repo, since ? { since } : {}),
+    deps.repo.analyticsReport(since ? { since } : {}),
   ]);
-  const events = read.events;
   const inWindow = <T extends { created_at: string }>(x: T) => !since || x.created_at >= since;
 
   const experiments = EXPERIMENTS.map((experiment): ExperimentSummary => {
@@ -48,8 +46,7 @@ export async function buildSummary(deps: Deps, since?: string): Promise<Summary>
     const paid = expOrders.filter(
       (o) => o.payment_status === "paid" || o.payment_status === "refunded",
     );
-    const expEvents = events.filter((e) => e.experiment_id === experiment.id);
-    const funnel = uniqueVisitorsByStep(expEvents);
+    const funnel = uniqueVisitorsByStep(report, experiment.id);
     const views = funnel.page_view ?? 0;
     const revenue = paid.reduce((sum, o) => sum + netRevenueCents(o), 0);
     const fulfilled = paid.filter((o) => o.time_to_fulfill_hours !== undefined);
@@ -79,37 +76,31 @@ export async function buildSummary(deps: Deps, since?: string): Promise<Summary>
             fulfilled.reduce((s, o) => s + (o.time_to_fulfill_hours ?? 0), 0) / fulfilled.length,
           )
         : null,
-      by_channel: byChannel(expEvents, paid),
+      by_channel: byChannel(report, experiment.id, paid),
     };
   });
 
   return {
     generated_at: deps.now().toISOString(),
     since: since ?? null,
-    events_truncated: read.truncated,
     experiments,
   };
 }
 
-function uniqueVisitorsByStep(events: AnalyticsEvent[]): Record<string, number> {
+function uniqueVisitorsByStep(report: AnalyticsReport, experimentId: string) {
   const result: Record<string, number> = {};
   for (const step of FUNNEL_STEPS) {
-    result[step] = new Set(events.filter((e) => e.name === step).map((e) => e.visitor_id)).size;
+    result[step] =
+      report.names.find((n) => n.experiment_id === experimentId && n.name === step)?.visitors ?? 0;
   }
   return result;
 }
 
-function byChannel(events: AnalyticsEvent[], paid: Order[]) {
+function byChannel(report: AnalyticsReport, experimentId: string, paid: Order[]) {
   const result: Record<string, { views: number; paid: number; revenue_cents: number }> = {};
   const bucket = (channel: string) => (result[channel] ??= { views: 0, paid: 0, revenue_cents: 0 });
-  const viewers = new Map<string, Set<string>>();
-  for (const e of events.filter((e) => e.name === "page_view")) {
-    (
-      viewers.get(e.acquisition_channel) ??
-      viewers.set(e.acquisition_channel, new Set()).get(e.acquisition_channel)!
-    ).add(e.visitor_id);
-  }
-  for (const [channel, visitors] of viewers) bucket(channel).views = visitors.size;
+  for (const row of report.steps.filter((r) => r.experiment_id === experimentId && r.visited))
+    bucket(row.channel).views += row.visited;
   for (const o of paid) {
     const b = bucket(o.acquisition_channel);
     b.paid += 1;

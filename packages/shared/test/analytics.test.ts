@@ -263,3 +263,25 @@ describe("parseEventPayload", () => {
     ).toBe(false);
   });
 });
+
+describe("deletion proof of possession", () => {
+  it("hashes a key to the 64-hex owner that events carry, and the forget body needs the key", async () => {
+    const {
+      ownerHashOf,
+      forgetVisitorSchema,
+      OWNER_HASH_PATTERN,
+      parseEventPayload: parse,
+    } = await import("../src/index.ts");
+    const key = "v".repeat(43);
+    const owner = await ownerHashOf(key);
+    expect(owner).toMatch(OWNER_HASH_PATTERN);
+    expect(await ownerHashOf(key)).toBe(owner);
+    expect(await ownerHashOf("w".repeat(43))).not.toBe(owner);
+    expect(parse({ events: [{ ...envelope, name: "page_view", owner }] }).ok).toBe(true);
+    expect(parse({ events: [{ ...envelope, name: "page_view", owner: key }] }).ok).toBe(false);
+    expect(forgetVisitorSchema.safeParse({ visitor_id: "visitor-12345678" }).success).toBe(false);
+    expect(forgetVisitorSchema.safeParse({ visitor_id: "visitor-12345678", key }).success).toBe(
+      true,
+    );
+  });
+});

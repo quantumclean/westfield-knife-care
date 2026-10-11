@@ -16,9 +16,10 @@ import {
 
 /**
  * Landing-page engagement, observed from the DOM so components need no tracking code:
- * sections reached, scroll depth, visible time, the process film, booking step reached and
- * booking sheet closed. Nothing here reads what a visitor types: form fields are identified
- * by their `name` attribute only. While a dialog is open, page scrolling is not measured.
+ * sections reached, scroll depth, visible time, the process film and booking sheet closed.
+ * Nothing here reads form fields. Booking step progress comes only from the explicit
+ * `booking_step` event the booking sheet sends when it changes step. While a dialog is open,
+ * page scrolling is not measured.
  */
 
 export const SECTION_SELECTORS: Record<SectionId, string> = {
@@ -28,19 +29,6 @@ export const SECTION_SELECTORS: Record<SectionId, string> = {
   pricing: "#pricing",
   faq: "#faq",
 };
-
-/** Booking fields that mean the visitor has moved on to their details. */
-const DETAIL_FIELDS = new Set([
-  "name",
-  "email",
-  "phone",
-  "line1",
-  "line2",
-  "city",
-  "state",
-  "zip",
-  "notes",
-]);
 
 export function timeBand(ms: number): (typeof TIME_BANDS)[number] {
   const s = ms / 1000;
@@ -62,18 +50,6 @@ export function reachedMilestones<T extends number>(
   milestones: readonly T[],
 ): T[] {
   return milestones.filter((m) => percent >= m);
-}
-
-/** Focus moved into a field of the open booking sheet: the visitor reached their details. */
-export function onFocusIn(event: Event): void {
-  const target = event.target as Element | null;
-  if (!target || typeof target.closest !== "function") return;
-  if (!["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
-  if (!target.closest("dialog[open]")) return;
-  // The name attribute only; the field's value is never read.
-  const name = target.getAttribute("name");
-  if (!name || !DETAIL_FIELDS.has(name) || activeFlow().kind !== "booking") return;
-  track(EVENTS.booking_step, { step: "details" });
 }
 
 /** A dialog closed. A booking sheet closed before checkout is an abandoned booking. */
@@ -214,8 +190,8 @@ export function startEngagement(): () => void {
     for (const video of document.querySelectorAll<HTMLVideoElement>("#process-film video"))
       stops.push(watchVideo(video));
 
-    // Booking sheet: details reached, closed without checkout.
-    listen(document, "focusin", onFocusIn, { capture: true });
+    // Booking sheet closed without checkout. (Step progress is reported explicitly by the
+    // booking sheet when it changes step, never inferred from which field has focus.)
     listen(document, "close", onDialogClose, { capture: true });
   } catch {
     // Engagement is optional; the page works without it.

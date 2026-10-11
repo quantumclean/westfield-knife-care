@@ -1,3 +1,4 @@
+import { ownerHashOf } from "@wkc/shared";
 import { API_BASE } from "./api.ts";
 
 /**
@@ -15,9 +16,11 @@ export interface PrivacyChoices {
 }
 
 const KEY = "wkc.privacy";
+export const PRIVACY_KEY = KEY;
 const DEFAULTS: PrivacyChoices = { v: 1, measurement: "on", google: "denied" };
 /** Browser keys that identify this device to our analytics; the price arm key is kept. */
-const DEVICE_KEYS = ["wkc.visitor_id", "wkc.attribution"] as const;
+const DEVICE_KEYS = ["wkc.visitor_id", "wkc.attribution", "wkc.analytics_key"] as const;
+const DELETION_KEY = "wkc.analytics_key";
 export const PRIVACY_CHANGED = "wkc:privacy-changed";
 
 /** Used when localStorage is unavailable, so an opt-out still holds for this page. */
@@ -86,23 +89,73 @@ export function googleAllowed(): boolean {
   );
 }
 
+let pageKey: string | undefined;
+
+function newDeletionKey(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+/** This browser's deletion key, created on first use. It never leaves the browser with events. */
+export function deletionKey(): string | undefined {
+  try {
+    const stored = localStorage.getItem(DELETION_KEY);
+    if (stored && /^[A-Za-z0-9_-]{43}$/.test(stored)) return stored;
+    const key = newDeletionKey();
+    localStorage.setItem(DELETION_KEY, key);
+    return key;
+  } catch {
+    // No storage (or no crypto): a key for this page only, so its events stay consistent.
+    try {
+      return (pageKey ??= newDeletionKey());
+    } catch {
+      return undefined;
+    }
+  }
+}
+
+/** The hash events carry as proof of ownership, or undefined where hashing is unavailable. */
+export async function deviceOwnerHash(): Promise<string | undefined> {
+  try {
+    const key = deletionKey();
+    return key ? await ownerHashOf(key) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
- * "Delete my analytics data": ask the API to erase this browser's events, forget this
- * browser's random id and attribution, and stop measuring on this device. Returns false if
- * the API could not be reached (the local part still happens).
+ * "Delete my analytics data": ask the API to erase this browser's events (proving ownership
+ * with the deletion key), forget this browser's ids and key, and stop measuring on this device.
+ * Returns false if the API could not be reached (the local part still happens).
  */
 export async function forgetThisDevice(visitorId: string): Promise<boolean> {
   let erased = false;
+  const key = (() => {
+    try {
+      return localStorage.getItem(DELETION_KEY) ?? pageKey;
+    } catch {
+      return pageKey;
+    }
+  })();
   try {
-    const res = await fetch(`${API_BASE}/events/forget`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ visitor_id: visitorId }),
-    });
-    erased = res.status === 204;
+    if (key) {
+      const res = await fetch(`${API_BASE}/events/forget`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ visitor_id: visitorId, key }),
+      });
+      erased = res.status === 204;
+    } else {
+      erased = true; // nothing was ever sent with an owner, so there is nothing to erase
+    }
   } catch {
     erased = false;
   }
+  pageKey = undefined;
   for (const key of DEVICE_KEYS) {
     try {
       localStorage.removeItem(key);

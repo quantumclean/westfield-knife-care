@@ -37,6 +37,7 @@ or URLs.**
 | --------------------- | ------------------------------------------------------------------------------------- |
 | `v`                   | `2`                                                                                   |
 | `event_id`            | random per event; the stored id is `ev-<event_id>`, so a retried batch is stored once |
+| `owner`               | SHA-256 of this browser's deletion key (proof of possession for self-deletion)        |
 | `view_id`             | random per page load (bounces, once-per-view dedup); not stored in the browser        |
 | `visitor_id`          | random id in localStorage (`wkc.visitor_id`); first-party only, never sent to GA4     |
 | `experiment_id`       | assigned arm; offer and price versions are resolved by the API                        |
@@ -56,7 +57,7 @@ or URLs.**
 | `page_view`          | page load of `/`, `/a`, `/b` or `/thanks`                                                                          |                                                                                    | view                | yes |
 | `cta_click`          | any Sharpen or Pilot button                                                                                        | `cta`: sharpen, pilot; `location` (below)                                          |                     | yes |
 | `booking_opened`     | booking sheet shown (step 1); also `checkout-cancelled` when Stripe's cancel link reopens it (no `cta_click` then) | `location`                                                                         |                     | yes |
-| `booking_step`       | step 2 (your details) shown, or first focus on a contact field                                                     | `step`: choose, details                                                            | booking, per step   | yes |
+| `booking_step`       | step 2 (your details) shown, sent by the booking sheet itself (never inferred)                                     | `step`: choose, details                                                            | booking, per step   | yes |
 | `booking_closed`     | booking sheet closed before checkout started                                                                       | `step` reached when it closed                                                      | booking             | no  |
 | `booking_submitted`  | booking passed client validation                                                                                   | `knives` 1–50, `total_cents`                                                       |                     | yes |
 | `checkout_started`   | order created, redirecting to Stripe                                                                               | `total_cents`                                                                      |                     | yes |
@@ -92,9 +93,11 @@ picked), `out_of_area` (the picked address is outside the service area), `fallba
 visitor opened the search, then typed the address by hand), `unavailable` (Apple's SDK failed
 to load). The search text, results and chosen address are never sent.
 
-The landing-page observers (sections, scroll, time, film, booking step and close) live in
+The landing-page observers (sections, scroll, time, film, booking sheet closed) live in
 `apps/web/src/lib/engagement.ts`. They work from the DOM, so components need no tracking
-code, and they read form field `name` attributes only, never values.
+code, and they never read form fields. Booking step progress is explicit: `BookingForm`
+sends `booking_step` when it changes step. Field focus is not used, because autofill and
+programmatic focus would make it unreliable.
 
 ## Funnels
 

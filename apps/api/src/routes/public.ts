@@ -10,6 +10,7 @@ import {
   forgetVisitorSchema,
   formatIssues,
   orderFeedbackSchema,
+  ownerHashOf,
   parseEventPayload,
   upcomingCareDays,
   type AnalyticsEvent,
@@ -128,6 +129,7 @@ export function publicRoutes(deps: Deps) {
         view_id: input.view_id,
         device: input.device,
         viewport: input.viewport,
+        ...(input.owner ? { owner: input.owner } : {}),
       };
     });
     await deps.repo.putEvents(events);
@@ -136,7 +138,9 @@ export function publicRoutes(deps: Deps) {
 
   /**
    * Erase this browser's analytics events ("Delete my analytics data" in the privacy panel).
-   * The random visitor id is only known to the browser that holds it. Orders and waitlist
+   * Proof of possession: events carry the SHA-256 of a random key that only the sending
+   * browser holds, and only events whose hash matches the presented key are deleted. A visitor
+   * id alone (for example one copied from an order export) deletes nothing. Orders and waitlist
    * entries are not touched here; those requests go to the support address.
    */
   app.post("/events/forget", async (c) => {
@@ -144,7 +148,8 @@ export function publicRoutes(deps: Deps) {
     if (!body.ok) return c.json({ error: body.error }, body.status);
     const parsed = forgetVisitorSchema.safeParse(body.value);
     if (!parsed.success) return c.json({ error: "invalid_request" }, 400);
-    await deps.repo.deleteVisitorEvents(parsed.data.visitor_id);
+    // Same response whether or not anything matched, so this cannot probe for visitors.
+    await deps.repo.deleteVisitorEvents(parsed.data.visitor_id, await ownerHashOf(parsed.data.key));
     return c.body(null, 204);
   });
 

@@ -29,6 +29,7 @@ describe("first-party events", () => {
     track(EVENTS.form_error, { form: "booking", fields: "customer.email,customer.address.zip" });
     track(EVENTS.checkout_started, { order_id: "order-123", total_cents: 3900 });
     flush();
+    await browser.drain();
     expect(browser.requests).toHaveLength(1); // one batch
     const events = browser.events();
     expect(events.map((e) => e.name)).toEqual([
@@ -59,6 +60,7 @@ describe("first-party events", () => {
     const b = await start({ href: "https://sharp.example.com/b" }, "b");
     b.track(b.EVENTS.page_view);
     b.flush();
+    await b.browser.drain();
     expect(b.browser.events()[0]).toMatchObject({
       experiment_id: "experiment-002",
       route: "/b",
@@ -70,10 +72,12 @@ describe("first-party events", () => {
     const desktop = await start({ width: 1280, coarse: false });
     desktop.track(desktop.EVENTS.page_view);
     desktop.flush();
+    await desktop.browser.drain();
     expect(desktop.browser.events()[0]).toMatchObject({ device: "desktop", viewport: "lg" });
     const tablet = await start({ width: 820, coarse: true });
     tablet.track(tablet.EVENTS.page_view);
     tablet.flush();
+    await tablet.browser.drain();
     expect(tablet.browser.events()[0]).toMatchObject({ device: "tablet", viewport: "md" });
   });
 
@@ -82,6 +86,7 @@ describe("first-party events", () => {
     track(EVENTS.cta_click, { cta: "sharpen", location: "hero" });
     expect(browser.requests).toHaveLength(0);
     track(EVENTS.checkout_started, { total_cents: 3900 });
+    await browser.drain();
     expect(browser.events().map((e) => e.name)).toEqual(["cta_click", "checkout_started"]);
   });
 
@@ -95,6 +100,7 @@ describe("first-party events", () => {
     for (let i = 0; i < 6; i++) track(EVENTS.client_error, { kind: "error", area: "page" });
     for (let i = 0; i < 200; i++) track(EVENTS.cta_click, { cta: "sharpen", location: "hero" });
     flush();
+    await browser.drain();
     const names = browser.events().map((e) => e.name);
     expect(names.filter((n) => n === "page_view")).toHaveLength(1);
     expect(names.filter((n) => n === "scroll_depth")).toHaveLength(2);
@@ -114,6 +120,7 @@ describe("first-party events", () => {
       track(EVENTS.booking_step, { step: "details" });
     }
     flush();
+    await browser.drain();
     expect(browser.events().filter((e) => e.name === "booking_step")).toHaveLength(2);
   });
 
@@ -125,6 +132,7 @@ describe("first-party events", () => {
       track(EVENTS.cta_click, { cta: "sharpen", location: value });
     }
     flush();
+    await browser.drain();
     const body = browser.requests.map((r) => r.body).join("\n");
     for (const value of PERSONAL) expect(body).not.toContain(value);
     expect(
@@ -140,6 +148,7 @@ describe("opt-out and browser signals", () => {
     consent.saveChoices({ measurement: "off" });
     track(EVENTS.page_view);
     flush();
+    await browser.drain();
     expect(browser.requests).toHaveLength(0);
   });
 
@@ -149,6 +158,7 @@ describe("opt-out and browser signals", () => {
     });
     track(EVENTS.page_view);
     flush();
+    await browser.drain();
     expect(browser.requests).toHaveLength(0);
   });
 
@@ -160,6 +170,7 @@ describe("opt-out and browser signals", () => {
     });
     track(EVENTS.page_view);
     flush();
+    await browser.drain();
     expect(browser.events()).toHaveLength(1);
     expect(browser.scripts).toHaveLength(0);
     expect(browser.gtag()).toHaveLength(0);
@@ -267,7 +278,7 @@ describe("backend failures", () => {
       track(EVENTS.checkout_started, { total_cents: 3900 });
       flush();
     }).not.toThrow();
-    await settle();
+    await browser.drain();
     expect(browser.requests.length).toBeGreaterThan(0);
   });
 
@@ -275,10 +286,11 @@ describe("backend failures", () => {
     for (const status of [503, 429]) {
       const { browser, track, flush, EVENTS } = await start({ status });
       track(EVENTS.checkout_started, { total_cents: 3900 });
-      await settle();
+      await browser.drain();
       const sent = browser.requests.length;
       track(EVENTS.cta_click, { cta: "sharpen", location: "hero" });
       flush();
+      await browser.drain();
       expect(browser.requests.length).toBe(sent);
     }
   });
@@ -287,9 +299,11 @@ describe("backend failures", () => {
     const { browser, track, flush, EVENTS } = await start({ online: false });
     track(EVENTS.page_view);
     flush();
+    await browser.drain();
     expect(browser.requests).toHaveLength(0);
     browser.nav.onLine = true;
     browser.fire("window", "online");
+    await browser.drain();
     expect(browser.events().map((e) => e.name)).toEqual(["page_view"]);
   });
 
@@ -297,6 +311,7 @@ describe("backend failures", () => {
     const { browser, track, EVENTS } = await start();
     track(EVENTS.cta_click, { cta: "sharpen", location: "hero" });
     browser.fire("window", "pagehide");
+    await browser.drain();
     expect(browser.events()).toHaveLength(1);
   });
 
@@ -304,6 +319,7 @@ describe("backend failures", () => {
     const { browser, flush, api } = await start({ status: 503 });
     await expect(api.api.config()).rejects.toThrow();
     flush();
+    await browser.drain();
     const errors = browser.events().filter((e) => e.name === "client_error");
     expect(errors).toEqual([
       expect.objectContaining({ props: { kind: "api", area: "config", status: "5xx" } }),
@@ -333,5 +349,62 @@ describe("formErrorProps", () => {
       count: 3,
     });
     expect(JSON.stringify(props)).not.toMatch(/ada@|908|10001/);
+  });
+});
+
+describe("preference changes take effect immediately", () => {
+  it("drops events already queued and in the middle of sending when counts are turned off", async () => {
+    const { browser, track, flush, consent, EVENTS } = await start();
+    track(EVENTS.cta_click, { cta: "sharpen", location: "hero" });
+    flush(); // handed to the sender, waiting for the owner hash
+    consent.saveChoices({ measurement: "off" });
+    await browser.drain();
+    expect(browser.requests).toHaveLength(0);
+  });
+
+  it("applies a choice made in another tab, including switching Google off", async () => {
+    const { browser, track, flush, EVENTS } = await start({ ga: "G-TEST", storage: OPTED_IN });
+    expect((browser.win as unknown as Record<string, unknown>)["ga-disable-G-TEST"]).toBe(false);
+    track(EVENTS.page_view);
+    // Another tab writes the opt-out and the browser fires a storage event here.
+    browser.storage.set(
+      "wkc.privacy",
+      JSON.stringify({ v: 1, measurement: "off", google: "denied" }),
+    );
+    browser.win.dispatchEvent(Object.assign(new Event("storage"), { key: "wkc.privacy" }));
+    expect((browser.win as unknown as Record<string, unknown>)["ga-disable-G-TEST"]).toBe(true);
+    expect(browser.gtag()).toContainEqual(["consent", "update", { analytics_storage: "denied" }]);
+    const before = browser.requests.length;
+    track(EVENTS.cta_click, { cta: "sharpen", location: "hero" });
+    flush();
+    await browser.drain();
+    expect(browser.requests.length).toBe(before);
+  });
+
+  it("switches Google off at once: consent denied, Google's opt-out flag set, nothing forwarded", async () => {
+    const { browser, track, consent, EVENTS } = await start({ ga: "G-TEST", storage: OPTED_IN });
+    const flag = () => (browser.win as unknown as Record<string, unknown>)["ga-disable-G-TEST"];
+    expect(flag()).toBe(false);
+    consent.saveChoices({ google: "denied" });
+    expect(flag()).toBe(true);
+    track(EVENTS.cta_click, { cta: "sharpen", location: "hero" });
+    const events = browser
+      .gtag()
+      .filter((c) => c[0] === "event")
+      .map((c) => c[1]);
+    expect(events).not.toContain("cta_click");
+  });
+
+  it("turning counts off also stops Google, even if it was opted in", async () => {
+    const { browser, track, consent, EVENTS } = await start({ ga: "G-TEST", storage: OPTED_IN });
+    consent.saveChoices({ measurement: "off" });
+    track(EVENTS.cta_click, { cta: "sharpen", location: "hero" });
+    expect((browser.win as unknown as Record<string, unknown>)["ga-disable-G-TEST"]).toBe(true);
+    expect(
+      browser
+        .gtag()
+        .filter((c) => c[0] === "event")
+        .map((c) => c[1]),
+    ).not.toContain("cta_click");
   });
 });
