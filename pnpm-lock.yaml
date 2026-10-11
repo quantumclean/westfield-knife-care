@@ -57,6 +57,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@apple/mapkit-loader':
+        specifier: ^1.0.0
+        version: 1.0.0
       '@wkc/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -103,6 +106,9 @@ importers:
         version: 5.9.3
 
 packages:
+
+  '@apple/mapkit-loader@1.0.0':
+    resolution: {integrity: sha512-sorvAhnH6mIaR0p8uOqf5tTubxFqWxjEsBce+cSMwaf5rpReiu1hJWW865HbY9UcfWvftKYtxN45/j4FD7Q0UA==}
 
   '@aws-sdk/client-dynamodb@3.1139.0':
     resolution: {integrity: sha512-M4gwQguUJa3lWMj0L5ux33jn8fmBj+pzNpWCn4/jt3y5CZC/ajGNHWLVgRd5XlypkLBG1bwrP5U2xCTovxQuyw==}
@@ -631,6 +637,9 @@ packages:
     resolution: {integrity: sha512-r7jh49VJxGerfAcTQA6gXcKc+98zOp/tqRwzYjgOE+iSQsP6cEU1hq2QzbuipmP68QtYdY9wKEhiCQZIzHgZ4Q==}
     engines: {node: '>=18.0.0'}
 
+  '@types/apple-mapkit@6.0.0':
+    resolution: {integrity: sha512-whTBkNjHEuC1BWmj7lsYuJUCod/er5oY6Y6ZvSGRgNOHv3yN1Q5K/9uEk4mkn6dlyTyMtHh19JvjrD172wYVBg==}
+
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
 
@@ -639,6 +648,9 @@ packages:
 
   '@types/estree@1.0.9':
     resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
+
+  '@types/geojson@7946.0.16':
+    resolution: {integrity: sha512-6C8nqWur3j98U6+lXDfTUWIfgvZU+EumvpHKcYjujKH7woYyLj2sUmff0tRhrqM7BohUw7Pz3ZB1jj2gW9Fvmg==}
 
   '@types/node@22.20.4':
     resolution: {integrity: sha512-zJRE40jpHtKqE/C4fgHrAKQLJuSpzEnP9ff9Y7YtoR3Wd2pwqzlekDeEuUQXjRd+QCYnVnNwuJYmhdk9XV8gvA==}
@@ -1110,6 +1122,10 @@ packages:
     resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
 
 snapshots:
+
+  '@apple/mapkit-loader@1.0.0':
+    dependencies:
+      '@types/apple-mapkit': 6.0.0
 
   '@aws-sdk/client-dynamodb@3.1139.0':
     dependencies:
@@ -1667,6 +1683,10 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
+  '@types/apple-mapkit@6.0.0':
+    dependencies:
+      '@types/geojson': 7946.0.16
+
   '@types/chai@5.2.3':
     dependencies:
       '@types/deep-eql': 4.0.2
@@ -1675,6 +1695,8 @@ snapshots:
   '@types/deep-eql@4.0.2': {}
 
   '@types/estree@1.0.9': {}
+
+  '@types/geojson@7946.0.16': {}
 
   '@types/node@22.20.4':
     dependencies:
