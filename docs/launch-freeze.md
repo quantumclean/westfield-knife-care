@@ -21,6 +21,10 @@ arms within each period, not across it.
   6 are now implemented) and the PR description. The warm Scandinavian
   refresh (PR #24) reached main first and ships blended with it, so treat
   #24 and #26 as one change when splitting before/after.
+- Also in the same release (owner decisions, 2026-10-10): the booking form
+  requires a mobile number, and orders are accepted only for ZIPs in the
+  service area (`SERVICE_AREA` in `packages/shared/src/content.ts`); other
+  ZIPs are offered the waitlist instead of payment.
 
 ## In scope during the freeze
 

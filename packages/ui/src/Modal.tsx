@@ -28,6 +28,13 @@ export function Modal({
   // Each dialog needs its own id: with two on the page a shared id gives both the first one's name.
   const titleId = useId();
 
+  // The native "close" event also fires when we close the dialog because the
+  // `open` prop went false (for example when one dialog hands over to
+  // another). Only a close the visitor started (Escape, the button, the
+  // backdrop) should be reported, or the hand-over would undo itself.
+  const openRef = useRef(open);
+  openRef.current = open;
+
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
@@ -40,7 +47,9 @@ export function Modal({
       ref={ref}
       class={variant === "sheet" ? "modal modal-sheet" : "modal"}
       aria-labelledby={titleId}
-      onClose={onClose}
+      onClose={() => {
+        if (openRef.current) onClose();
+      }}
       onClick={(e) => {
         if (e.target === ref.current) onClose();
       }}

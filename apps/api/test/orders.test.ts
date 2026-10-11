@@ -96,6 +96,29 @@ describe("POST /api/orders", () => {
     expect(bad.status).toBe(400);
     expect((await readJson(bad)).issues.length).toBeGreaterThan(0);
 
+    const outOfArea = await app.request(
+      "/api/orders",
+      json("POST", {
+        ...validOrder,
+        customer: {
+          ...validOrder.customer,
+          address: { ...validOrder.customer.address, zip: "10001" },
+        },
+      }),
+    );
+    expect(outOfArea.status).toBe(400);
+    expect((await readJson(outOfArea)).issues).toContain(
+      "customer.address.zip: We don't pick up in this ZIP code yet.",
+    );
+
+    const { phone: _phone, ...noPhone } = validOrder.customer;
+    const phoneless = await app.request(
+      "/api/orders",
+      json("POST", { ...validOrder, customer: noPhone }),
+    );
+    expect(phoneless.status).toBe(400);
+    expect((await readJson(phoneless)).issues[0]).toMatch(/^customer\.phone: /);
+
     const badDay = await app.request(
       "/api/orders",
       json("POST", { ...validOrder, care_day: "2026-09-25" }),

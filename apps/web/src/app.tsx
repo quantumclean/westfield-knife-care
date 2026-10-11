@@ -2,6 +2,7 @@ import type { ComponentType } from "preact";
 import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import { Button, Modal, Notice } from "@wkc/ui";
 import type { BookingDialogProps } from "./forms/BookingForm.tsx";
+import type { PilotFormProps, WaitlistPrefill } from "./forms/PilotForm.tsx";
 import { EVENTS, track } from "./lib/analytics.ts";
 import { resolveAvailability } from "./lib/booking.ts";
 import { useSiteConfig } from "./lib/config.ts";
@@ -16,7 +17,7 @@ import { Pricing } from "./sections/Pricing.tsx";
 import { StickyCta } from "./sections/StickyCta.tsx";
 
 type Dialog = "none" | "book" | "pilot";
-type PilotFormComponent = ComponentType<{ session: Session }>;
+type PilotFormComponent = ComponentType<PilotFormProps>;
 
 // The forms (and the validation library they need) stay out of the first
 // load. They are fetched when the visitor shows intent, or when idle.
@@ -31,6 +32,8 @@ export function App({ session }: { session: Session }) {
   const [dialog, setDialog] = useState<Dialog>("none");
   const [Booking, setBooking] = useState<ComponentType<BookingDialogProps> | null>(null);
   const [Pilot, setPilot] = useState<PilotFormComponent | null>(null);
+  // Set when the waitlist is opened from booking (out of area, booking closed).
+  const [pilotPrefill, setPilotPrefill] = useState<WaitlistPrefill | undefined>(undefined);
   // A lazily loaded form that failed to arrive (offline, deploy mid-visit):
   // say so and offer a retry instead of a button that seems to do nothing.
   const [loadFailed, setLoadFailed] = useState<"none" | "book" | "pilot">("none");
@@ -70,7 +73,8 @@ export function App({ session }: { session: Session }) {
     prefetchBooking(true);
     setDialog("book");
   };
-  const openPilot = (location: string) => {
+  const openPilot = (location: string, prefill?: WaitlistPrefill) => {
+    setPilotPrefill(prefill);
     track(EVENTS.cta_click, { cta: "pilot", location });
     track(EVENTS.pilot_opened, { location });
     loadPilotForm();
@@ -159,6 +163,7 @@ export function App({ session }: { session: Session }) {
           config={config}
           onRetryConfig={retry}
           resumed={resumed}
+          onWaitlist={(location, prefill) => openPilot(location, prefill)}
         />
       ) : (
         <Modal
@@ -170,9 +175,13 @@ export function App({ session }: { session: Session }) {
           <LoadState failed={loadFailed === "book"} reopen="book" />
         </Modal>
       )}
-      <Modal open={dialog === "pilot"} title="Join the Always Sharp Pilot" onClose={close}>
+      <Modal
+        open={dialog === "pilot"}
+        title={pilotPrefill ? "Join the waitlist" : "Join the Always Sharp Pilot"}
+        onClose={close}
+      >
         {Pilot ? (
-          <Pilot session={session} />
+          <Pilot session={session} prefill={pilotPrefill} key={pilotPrefill?.notes ?? "pilot"} />
         ) : (
           <LoadState failed={loadFailed === "pilot"} reopen="pilot" />
         )}

@@ -1416,3 +1416,104 @@
 .pass-home {
   margin-top: 1.5rem;
 }
+
+/* ---------- Booking sheet: guidance details ---------- */
+.choice-note.nudge {
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  background: var(--butter);
+  color: var(--ink);
+  font-weight: 600;
+}
+.day-tag {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  translate: -50% 0;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--tomato);
+  color: light-dark(#fff7e8, #2a130d);
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  line-height: 1.5;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+.days {
+  padding-top: 10px;
+}
+.area-note {
+  text-align: left;
+  font-weight: 600;
+  color: var(--tomato);
+}
+.booking-closed-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* ---------- Hero reassurance ---------- */
+.hero-assure {
+  margin: 0.4rem 0 0;
+  font-size: 0.86rem;
+  color: var(--ink-soft);
+}
+
+/* ---------- Booking pass: get ready ---------- */
+.ready {
+  padding: 1.3rem 1.6rem 0.2rem;
+}
+.ready h2 {
+  font-size: 1.7rem;
+  margin-bottom: 0.8rem;
+}
+.ready-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ready-steps li {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  padding: 0.8rem;
+  border-radius: 14px;
+  background: var(--butter);
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+.ready-steps li:nth-child(2) {
+  background: var(--coral);
+}
+.ready-steps li:nth-child(3) {
+  background: var(--sage);
+}
+.ready-steps svg {
+  width: 44px;
+  height: 44px;
+}
+@media (max-width: 520px) {
+  .ready-steps {
+    grid-template-columns: 1fr;
+  }
+  .ready-steps li {
+    flex-direction: row;
+    align-items: center;
+  }
+  .ready-steps svg {
+    flex: none;
+  }
+}
+.pass-help {
+  margin: 0;
+  padding: 0.2rem 1.6rem 1.4rem;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}

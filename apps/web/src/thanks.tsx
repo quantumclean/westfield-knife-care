@@ -7,6 +7,7 @@ import "./styles.css";
 import { BRAND, formatCareDay, formatMoney } from "@wkc/shared";
 import { Button, Logo, Notice } from "@wkc/ui";
 import { FRUITS } from "./art/fruit.ts";
+import { READY_ART } from "./art/ready.ts";
 import { ApiError, api, type PublicOrder } from "./lib/api.ts";
 import { EVENTS, initAnalytics, track } from "./lib/analytics.ts";
 import { pollDelay } from "./lib/backoff.ts";
@@ -306,6 +307,28 @@ function ThanksPage() {
                   <span>Return timing is confirmed separately.</span>
                 </li>
               </ol>
+              <div class="ticket-tear" aria-hidden="true" />
+              <section class="ready" aria-labelledby="ready-title">
+                <h2 id="ready-title">Get ready the night before</h2>
+                <ol class="ready-steps">
+                  {(
+                    [
+                      ["wrap", "Wrap each blade in a kitchen towel or a cardboard sleeve."],
+                      ["bag", "Put them together in a bag."],
+                      ["door", "Leave the bag by your door before 8am."],
+                    ] as const
+                  ).map(([art, text]) => (
+                    <li key={art}>
+                      <svg
+                        viewBox="0 0 48 48"
+                        aria-hidden="true"
+                        dangerouslySetInnerHTML={{ __html: READY_ART[art] }}
+                      />
+                      <span>{text}</span>
+                    </li>
+                  ))}
+                </ol>
+              </section>
               <div class="pass-actions">
                 <Button onClick={() => downloadIcs(order)} arrow>
                   Add pickup to calendar
@@ -313,6 +336,22 @@ function ThanksPage() {
               </div>
             </>
           )}
+          <p class="pass-help">
+            Need to change something?{" "}
+            <a
+              href={`mailto:${BRAND.support_email}?subject=${encodeURIComponent(
+                `Order ${shortRef(order.id)}`,
+              )}&body=${encodeURIComponent(`Order number: ${order.id}\n\n`)}`}
+            >
+              Email {BRAND.support_email}
+            </a>
+            {paid && (
+              <>
+                {" "}
+                · <a href="/#pilot">Want this on repeat? Join the Always Sharp pilot</a>
+              </>
+            )}
+          </p>
         </article>
       )}
 

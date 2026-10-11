@@ -75,6 +75,7 @@ export function Hero({ offer, price, nextPickup, onBook, onPilot, onIntent }: He
               Watch the film
             </a>
           </div>
+          <p class="hero-assure">See your total before you pay · Secure card payment via Stripe</p>
           <button type="button" class="link-quiet" onClick={onPilot}>
             or join the Always Sharp waitlist
           </button>

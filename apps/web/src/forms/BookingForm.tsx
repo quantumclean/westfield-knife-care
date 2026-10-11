@@ -1,10 +1,15 @@
 import { useEffect, useId, useMemo, useRef, useState } from "preact/hooks";
 import {
   BRAND,
+  OUT_OF_AREA,
   createOrderSchema,
+  emailSchema,
   formatCareDay,
   formatMoney,
+  isServedZip,
+  phoneSchema,
   quoteOrder,
+  serviceTownsLabel,
   upcomingCareDays,
   type ResolvedExperiment,
 } from "@wkc/shared";
@@ -26,6 +31,7 @@ import {
   type ContactField,
 } from "../lib/draft.ts";
 import { sessionContext, type Session } from "../lib/session.ts";
+import type { WaitlistPrefill } from "./PilotForm.tsx";
 import { US_STATES } from "../lib/us-states.ts";
 
 export interface BookingDialogProps {
@@ -37,6 +43,8 @@ export interface BookingDialogProps {
   onRetryConfig: () => void;
   /** The visitor came back from a cancelled Stripe checkout. */
   resumed: boolean;
+  /** Offer the waitlist instead (outside the service area, or booking closed). */
+  onWaitlist: (location: "out-of-area" | "booking-closed", prefill: WaitlistPrefill) => void;
 }
 
 type Errors = Record<string, string>;
@@ -46,21 +54,25 @@ type Step = 1 | 2;
 const FRIENDLY: Record<string, string> = {
   "customer.name": "Enter your name.",
   "customer.email": "Enter a valid email address.",
-  "customer.phone": "Enter a valid phone number, or leave it blank.",
+  "customer.phone": "Enter a mobile number so we can coordinate your pickup.",
   "customer.address.line1": "Enter the street address for pickup.",
   "customer.address.city": "Enter your town or city.",
   "customer.address.state": "Choose your state.",
   "customer.address.zip": "Enter a 5-digit ZIP code.",
 };
 const STEP_ONE_FIELDS = new Set(["number_of_knives", "care_day"]);
-const EXTRA_FIELDS = new Set(["customer.address.line2", "customer.phone", "notes"]);
+const EXTRA_FIELDS = new Set(["customer.address.line2", "notes"]);
+const ZIP_PATTERN = /^\d{5}(-\d{4})?$/;
 
 /** Turn "customer.address.zip: message" issues into a field -> message map. */
 function issuesToErrors(issues: string[]): Errors {
   const errors: Errors = {};
   for (const issue of issues) {
     const [path, ...rest] = issue.split(": ");
-    if (path && rest.length) errors[path] ??= FRIENDLY[path] ?? rest.join(": ");
+    if (!path || !rest.length) continue;
+    const message = rest.join(": ");
+    // Out-of-area is already plain language; everything else gets the friendly wording.
+    errors[path] ??= message === OUT_OF_AREA ? OUT_OF_AREA : (FRIENDLY[path] ?? message);
   }
   return errors;
 }
@@ -79,6 +91,42 @@ function dayParts(iso: string) {
 
 const plural = (n: number) => `${n} ${n === 1 ? "knife" : "knives"}`;
 
+/** Where each contact field's errors live in the order schema. */
+const FIELD_PATHS: Record<ContactField, string> = {
+  name: "customer.name",
+  email: "customer.email",
+  phone: "customer.phone",
+  line1: "customer.address.line1",
+  line2: "customer.address.line2",
+  city: "customer.address.city",
+  state: "customer.address.state",
+  zip: "customer.address.zip",
+  notes: "notes",
+};
+
+/** Field-level checks run on blur, so mistakes show up before Pay, not after. */
+const BLUR_CHECKS: Partial<
+  Record<ContactField, { path: string; check: (v: string) => string | null }>
+> = {
+  email: {
+    path: "customer.email",
+    check: (v) => (emailSchema.safeParse(v).success ? null : FRIENDLY["customer.email"]!),
+  },
+  phone: {
+    path: "customer.phone",
+    check: (v) => (phoneSchema.safeParse(v).success ? null : FRIENDLY["customer.phone"]!),
+  },
+  zip: {
+    path: "customer.address.zip",
+    check: (v) =>
+      !ZIP_PATTERN.test(v)
+        ? FRIENDLY["customer.address.zip"]!
+        : isServedZip(v)
+          ? null
+          : OUT_OF_AREA,
+  },
+};
+
 /**
  * Booking in two short steps inside a sheet: (1) how many knives and which
  * pickup day, both preselected so it can be a single tap, then (2) where to
@@ -94,6 +142,7 @@ export function BookingDialog({
   config,
   onRetryConfig,
   resumed,
+  onWaitlist,
 }: BookingDialogProps) {
   const { price, offer } = experiment;
   const formId = useId();
@@ -106,7 +155,7 @@ export function BookingDialog({
   const [careDay, setCareDay] = useState(draft?.care_day ?? "");
   const [contact, setContact] = useState<Contact>(draft?.contact ?? emptyContact());
   const [moreOpen, setMoreOpen] = useState(
-    Boolean(draft && (draft.contact.line2 || draft.contact.phone || draft.contact.notes)),
+    Boolean(draft && (draft.contact.line2 || draft.contact.notes)),
   );
   const [errors, setErrors] = useState<Errors>({});
   const [submitting, setSubmitting] = useState(false);
@@ -148,9 +197,29 @@ export function BookingDialog({
   const quote = useMemo(() => quoteOrder(price, knives), [price, knives]);
   const total = formatMoney(quote.total_cents, quote.currency);
 
+  const zip = contact.zip.trim();
+  const outOfArea = ZIP_PATTERN.test(zip) && !isServedZip(zip);
+
   const set = (key: ContactField) => (e: Event) => {
     const value = (e.currentTarget as HTMLInputElement).value;
     setContact((c) => ({ ...c, [key]: value }));
+    // Once a field has been flagged, clear the message as soon as it is fixed:
+    // checked fields when they pass their check, the rest once they have text.
+    const path = FIELD_PATHS[key];
+    const rule = BLUR_CHECKS[key];
+    const fixed = rule ? !rule.check(value.trim()) : value.trim() !== "";
+    if (errors[path] && fixed) {
+      setErrors(({ [path]: _fixed, ...rest }) => rest);
+    }
+  };
+  const blur = (key: ContactField) => () => {
+    const rule = BLUR_CHECKS[key];
+    const value = contact[key].trim();
+    if (!rule || !value) return; // don't nag about a field nobody has typed in yet
+    const message = rule.check(value);
+    setErrors(({ [rule.path]: _old, ...rest }) =>
+      message ? { ...rest, [rule.path]: message } : rest,
+    );
   };
 
   async function onSubmit(event: Event) {
@@ -159,14 +228,14 @@ export function BookingDialog({
       if (careDay) setStep(2);
       return;
     }
-    if (!bookable || submitting) return;
+    if (!bookable || submitting || outOfArea) return;
     const v = (key: ContactField) => contact[key].trim();
     const candidate = {
       ...sessionContext(session),
       customer: {
         name: v("name"),
         email: v("email"),
-        phone: v("phone") || undefined,
+        phone: v("phone"),
         address: {
           line1: v("line1"),
           line2: v("line2") || undefined,
@@ -239,7 +308,22 @@ export function BookingDialog({
           )}
         </span>
       </div>
-      {step === 1 ? (
+      {step === 2 && outOfArea ? (
+        <button
+          type="button"
+          class="btn btn-secondary btn-lg"
+          onClick={() =>
+            onWaitlist("out-of-area", {
+              notes: `Outside the area: ZIP ${zip}`,
+              name: contact.name.trim(),
+              email: contact.email.trim(),
+              phone: contact.phone.trim(),
+            })
+          }
+        >
+          Join the waitlist
+        </button>
+      ) : step === 1 ? (
         <button type="submit" form={formId} class="btn btn-primary btn-lg" disabled={!careDay}>
           <span>Continue</span>
           <span class="btn-arrow" aria-hidden="true">
@@ -264,7 +348,13 @@ export function BookingDialog({
           </span>
         </button>
       )}
-      {step === 2 && <p class="receipt-note muted">Secure card payment via Stripe.</p>}
+      {step === 2 && outOfArea ? (
+        <p class="receipt-note area-note" role="status">
+          We don't pick up in {zip} yet. We serve {serviceTownsLabel()}.
+        </p>
+      ) : (
+        step === 2 && <p class="receipt-note muted">Secure card payment via Stripe.</p>
+      )}
     </div>
   );
 
@@ -294,11 +384,16 @@ export function BookingDialog({
         {availability.status === "closed" && (
           <div class="booking-closed">
             <Notice tone="error">{closedMessage(availability.reason, BRAND.support_email)}</Notice>
-            {availability.reason === "unreachable" && (
-              <Button variant="secondary" onClick={onRetryConfig}>
-                Try again
+            <div class="booking-closed-actions">
+              {availability.reason === "unreachable" && (
+                <Button variant="secondary" onClick={onRetryConfig}>
+                  Try again
+                </Button>
+              )}
+              <Button variant="ghost" onClick={() => onWaitlist("booking-closed", { notes: "" })}>
+                Join the waitlist instead
               </Button>
-            )}
+            </div>
           </div>
         )}
 
@@ -356,22 +451,36 @@ export function BookingDialog({
                   </button>
                 </div>
               )}
-              <p class="choice-note muted">
-                {formatMoney(price.bundle_price_cents, price.currency)} covers up to{" "}
-                {plural(price.knives_included)}. Extra knives{" "}
-                {formatMoney(price.extra_knife_price_cents, price.currency)} each
-                {price.max_knives > 5 ? `, up to ${price.max_knives}` : ""}.
-              </p>
+              {knives < price.knives_included ? (
+                <p class="choice-note nudge" aria-live="polite">
+                  Your {formatMoney(price.bundle_price_cents, price.currency)} covers up to{" "}
+                  {plural(price.knives_included)}. Add {price.knives_included - knives} more at no
+                  extra cost.
+                </p>
+              ) : (
+                <p class="choice-note muted">
+                  {formatMoney(price.bundle_price_cents, price.currency)} covers up to{" "}
+                  {plural(price.knives_included)}. Extra knives{" "}
+                  {formatMoney(price.extra_knife_price_cents, price.currency)} each
+                  {price.max_knives > 5 ? `, up to ${price.max_knives}` : ""}.
+                </p>
+              )}
+              <p class="choice-note muted">Serrated or ceramic? Add a note in the next step.</p>
               {errors.number_of_knives && <p class="field-message">{errors.number_of_knives}</p>}
             </fieldset>
 
             <fieldset class="choice">
               <legend>Pickup day</legend>
               <div class="days">
-                {careDays.map((day) => {
+                {careDays.map((day, i) => {
                   const p = dayParts(day);
                   return (
                     <label class="day" key={day}>
+                      {i === 0 && (
+                        <span class="day-tag" aria-hidden="true">
+                          Next
+                        </span>
+                      )}
                       <input
                         type="radio"
                         name="care_day"
@@ -426,6 +535,27 @@ export function BookingDialog({
                 enterkeyhint="next"
                 value={contact.email}
                 onInput={set("email")}
+                onBlur={blur("email")}
+                required
+              />
+            </Field>
+            <Field
+              label="Mobile number"
+              htmlFor="bk-phone"
+              required
+              error={errors["customer.phone"]}
+              hint="Used only to coordinate your pickup and return."
+            >
+              <Input
+                id="bk-phone"
+                name="phone"
+                type="tel"
+                inputMode="tel"
+                autocomplete="tel"
+                enterkeyhint="next"
+                value={contact.phone}
+                onInput={set("phone")}
+                onBlur={blur("phone")}
                 required
               />
             </Field>
@@ -493,6 +623,7 @@ export function BookingDialog({
                   maxLength={10}
                   value={contact.zip}
                   onInput={set("zip")}
+                  onBlur={blur("zip")}
                   required
                 />
               </Field>
@@ -503,7 +634,7 @@ export function BookingDialog({
               open={moreOpen}
               onToggle={(e) => setMoreOpen((e.currentTarget as HTMLDetailsElement).open)}
             >
-              <summary>Apartment, phone or notes</summary>
+              <summary>Apartment or notes</summary>
               <Field
                 label="Apartment, suite, etc."
                 htmlFor="bk-line2"
@@ -515,21 +646,6 @@ export function BookingDialog({
                   autocomplete="address-line2"
                   value={contact.line2}
                   onInput={set("line2")}
-                />
-              </Field>
-              <Field
-                label="Phone"
-                htmlFor="bk-phone"
-                error={errors["customer.phone"]}
-                hint="Optional. We may use it to coordinate pickup and return."
-              >
-                <Input
-                  id="bk-phone"
-                  name="phone"
-                  type="tel"
-                  autocomplete="tel"
-                  value={contact.phone}
-                  onInput={set("phone")}
                 />
               </Field>
               <Field

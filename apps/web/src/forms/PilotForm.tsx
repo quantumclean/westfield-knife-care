@@ -18,7 +18,24 @@ const CADENCE_LABELS: Record<(typeof CADENCES)[number], string> = {
   monthly: "Monthly",
 };
 
-export function PilotForm({ session }: { session: Session }) {
+/** What booking already knows, so the visitor does not type it twice. */
+export interface WaitlistPrefill {
+  notes: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+}
+
+export interface PilotFormProps {
+  session: Session;
+  /**
+   * Set when the visitor arrives from booking (outside the service area, or
+   * booking closed): the waitlist is for one-off sharpening, with a note.
+   */
+  prefill?: WaitlistPrefill;
+}
+
+export function PilotForm({ session, prefill }: PilotFormProps) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -72,27 +89,61 @@ export function PilotForm({ session }: { session: Session }) {
   if (done) {
     return (
       <Notice tone="success">
-        <strong>You are on the list.</strong> We will email you when the Always Sharp pilot opens in
-        Westfield. Until then, you can still book a one-off sharpening.
+        {prefill ? (
+          <>
+            <strong>You are on the list.</strong> Thanks for telling us where you are; routes expand
+            based on demand.
+          </>
+        ) : (
+          <>
+            <strong>You are on the list.</strong> We will email you when the Always Sharp pilot
+            opens in Westfield. Until then, you can still book a one-off sharpening.
+          </>
+        )}
       </Notice>
     );
   }
 
   return (
     <form ref={formRef} onSubmit={onSubmit} noValidate>
-      <p class="muted">
-        Always Sharp is a swap program: hand us a dull knife, take a sharp one. Tell us what rhythm
-        suits your kitchen and we will invite Westfield households first.
-      </p>
+      {prefill ? (
+        <p class="muted">
+          Leave your details and tell us where you are. Routes expand based on demand.
+        </p>
+      ) : (
+        <p class="muted">
+          Always Sharp is a swap program: hand us a dull knife, take a sharp one. Tell us what
+          rhythm suits your kitchen and we will invite Westfield households first.
+        </p>
+      )}
       <Field label="Your name" htmlFor="pilot-name" required error={errors.name}>
-        <Input id="pilot-name" name="name" autocomplete="name" required />
+        <Input
+          id="pilot-name"
+          name="name"
+          autocomplete="name"
+          defaultValue={prefill?.name}
+          required
+        />
       </Field>
       <div class="form-row">
         <Field label="Email" htmlFor="pilot-email" required error={errors.email}>
-          <Input id="pilot-email" name="email" type="email" autocomplete="email" required />
+          <Input
+            id="pilot-email"
+            name="email"
+            type="email"
+            autocomplete="email"
+            defaultValue={prefill?.email}
+            required
+          />
         </Field>
         <Field label="Phone" htmlFor="pilot-phone" error={errors.phone}>
-          <Input id="pilot-phone" name="phone" type="tel" autocomplete="tel" />
+          <Input
+            id="pilot-phone"
+            name="phone"
+            type="tel"
+            autocomplete="tel"
+            defaultValue={prefill?.phone}
+          />
         </Field>
       </div>
       <div class="form-row">
@@ -104,7 +155,7 @@ export function PilotForm({ session }: { session: Session }) {
         >
           <Select id="pilot-interest" name="service_interest">
             {SERVICE_INTERESTS.map((v) => (
-              <option value={v} key={v} selected={v === "always_sharp"}>
+              <option value={v} key={v} selected={v === (prefill ? "sharpening" : "always_sharp")}>
                 {INTEREST_LABELS[v]}
               </option>
             ))}
@@ -126,7 +177,7 @@ export function PilotForm({ session }: { session: Session }) {
         error={errors.notes}
         hint="Which knives, how many people you cook for."
       >
-        <Textarea id="pilot-notes" name="notes" />
+        <Textarea id="pilot-notes" name="notes" defaultValue={prefill?.notes} />
       </Field>
       <p class="visually-hidden" role="status">
         {errorSummary(errors)}

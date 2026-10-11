@@ -10,6 +10,38 @@ export const BRAND = {
   support_email: "sales@usabiology.com",
 } as const;
 
+/**
+ * Where pickups happen. Owner decision (2026-10-10): Westfield and its
+ * neighbouring towns. The order schema rejects any other ZIP, so nobody pays
+ * for a pickup that cannot happen; the booking sheet offers the waitlist.
+ */
+export const SERVICE_AREA = [
+  { zip: "07090", town: "Westfield" },
+  { zip: "07091", town: "Westfield" },
+  { zip: "07092", town: "Mountainside" },
+  { zip: "07027", town: "Garwood" },
+  { zip: "07016", town: "Cranford" },
+  { zip: "07076", town: "Scotch Plains" },
+  { zip: "07023", town: "Fanwood" },
+] as const;
+
+/** Town names in the service area, once each, in display order. */
+export const SERVICE_TOWNS: readonly string[] = [...new Set(SERVICE_AREA.map((a) => a.town))];
+
+/** True for a 5-digit ZIP or ZIP+4 whose first five digits are served. */
+export function isServedZip(zip: string): boolean {
+  const five = zip.trim().slice(0, 5);
+  return SERVICE_AREA.some((a) => a.zip === five);
+}
+
+/** "Westfield, Mountainside, …, Scotch Plains and Fanwood" */
+export function serviceTownsLabel(): string {
+  const towns = [...SERVICE_TOWNS];
+  return towns.length > 1
+    ? `${towns.slice(0, -1).join(", ")} and ${towns.at(-1)}`
+    : (towns[0] ?? "");
+}
+
 export const HOW_IT_WORKS = [
   {
     step: 1,
@@ -67,6 +99,6 @@ export const FAQ = [
     id: "area",
     question: "Which areas do you cover?",
     answer:
-      "Westfield and the immediate neighbourhoods for now. If you are just outside, join the waitlist and tell us where you are; routes expand based on demand.",
+      "Westfield, Mountainside, Garwood, Cranford, Scotch Plains and Fanwood for now. If you are outside those towns, join the waitlist and tell us where you are; routes expand based on demand.",
   },
 ] as const;
