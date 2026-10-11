@@ -41,6 +41,8 @@ const SOURCES: Record<string, string> = {
   "src/forms/BookingForm.tsx": read("src/forms/BookingForm.tsx"),
   "src/forms/PilotForm.tsx": read("src/forms/PilotForm.tsx"),
   "src/thanks.tsx": read("src/thanks.tsx"),
+  "src/lib/ics.ts (calendar reminder text)": read("src/lib/ics.ts"),
+  "src/toy/slice-board.ts": read("src/toy/slice-board.ts"),
   ...Object.fromEntries(sections.map((f) => [f, read(f)])),
 };
 
@@ -62,6 +64,14 @@ describe("customer-facing copy makes no unverified promises", () => {
     expect(FAQ.find((q) => q.id === "payment")?.answer).toBe(
       "Securely by card through Stripe when you book.",
     );
+  });
+
+  it("never points to a turnaround the page does not show", () => {
+    // The FAQ once said the turnaround "is shown on this page and in the booking form"
+    // while both said return timing is confirmed separately.
+    const answer = FAQ.find((q) => q.id === "turnaround")?.answer ?? "";
+    expect(answer).not.toMatch(/shown on this page/i);
+    expect(answer).toContain("Return timing is confirmed separately");
   });
 
   it("keeps the FAQ ids that analytics events refer to", () => {

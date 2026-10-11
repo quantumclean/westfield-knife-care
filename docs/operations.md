@@ -20,7 +20,9 @@ Care days are configured in `packages/shared/src/care-days.ts`
 wkc "$API/admin/orders" | jq -r '.orders[] | select(.payment_status=="paid" and .pickup_status=="scheduled" and .care_day=="2026-09-26") | [.id, .customer.name, .customer.address.line1, .number_of_knives, .notes] | @tsv'
 ```
 
-Plan the route from that list. Text each customer the pickup window.
+Plan the route from that list. Text each customer the pickup window (every order
+has a mobile number: the booking form requires one, and only service-area ZIPs
+can book, see `SERVICE_AREA` in `packages/shared/src/content.ts`).
 
 **On pickup**
 

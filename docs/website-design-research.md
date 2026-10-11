@@ -40,3 +40,28 @@ experiment routes at desktop and narrow mobile widths: verify the displayed
 prices, keyboard navigation, section links, booking and pilot dialogs, horizontal
 overflow, reduced-motion behavior, and video playback without an initial video
 download. These checks are bounded and do not exercise live customer endpoints.
+
+## Blend with booking UX v2 (PR #26)
+
+PR #26 ("Workshop paper" redesign and two-step booking) and this refresh
+were built in parallel. The owner chose to blend them:
+
+- **From this refresh:** the butter, coral, sky and leaf palette with oak
+  frames and offset oak edges; the section colour rhythm (butter hero, sky
+  How it works, oak pricing, cream FAQ, green footer); the headline "Good
+  food starts with a sharp knife." and the warmer introduction; the "Chop
+  chop. Let's cook!" badge; the kitchen photo (now in the pricing section,
+  lazy-loaded); section links kept visible on phones; the skip link to
+  `#main-content`; the film layout with a readable description.
+- **From PR #26:** the two-step booking sheet with a pinned total, the
+  thank-you booking pass and calendar file, the draft kept across a
+  cancelled checkout, the price ticket and next-pickup stamp in the hero,
+  the inked fruit-slicing board, Instrument Serif headings, stamps and
+  tickets, a designed dark mode, and lazy-loaded forms.
+- **Film replaced.** The supplied process film ended on "Never cook with a
+  dull knife again.", offer-001's headline, for every visitor, so arm B
+  visitors saw arm A's pitch. It was replaced by the claim-safe launch film
+  (`marketing/launch-video`, v3: no headline, no timing promise, the same
+  for both arms) in the same layout.
+- **Contrast:** the pricing background uses a lighter oak (`#f0dabd`) than
+  the refresh's `#e5c29b`, which put muted text below 4.5:1.

@@ -7,3 +7,5 @@ pnpm-lock.yaml
 *.tfstate
 *.tfstate.backup
 infrastructure/lambda/build
+marketing/launch-video/out
+marketing/flyers/flyer-*.html

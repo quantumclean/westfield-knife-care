@@ -1,64 +1,93 @@
-import { formatMoney, type OfferVersion, type PriceVersion } from "@wkc/shared";
-import { Button, Icon } from "@wkc/ui";
+import { formatCareDay, formatMoney, type OfferVersion, type PriceVersion } from "@wkc/shared";
+import { CuttingBoard } from "./CuttingBoard.tsx";
 
 export interface HeroProps {
   offer: OfferVersion;
   price: PriceVersion;
+  /** First bookable pickup day (YYYY-MM-DD), or null while unknown or closed. */
+  nextPickup: string | null;
   onBook: () => void;
   onPilot: () => void;
+  /** Pointer or focus on the main button: start loading the booking sheet. */
+  onIntent: () => void;
 }
 
-export function Hero({ offer, price, onBook, onPilot }: HeroProps) {
+/**
+ * Everything a flyer visitor needs in one screen: what it is, what it costs,
+ * when the next pickup is, and one button. The price is the visitor's own
+ * experiment arm, exactly as the pricing section and checkout show it.
+ */
+export function Hero({ offer, price, nextPickup, onBook, onPilot, onIntent }: HeroProps) {
+  const knives = `${price.knives_included} ${price.knives_included === 1 ? "knife" : "knives"}`;
   return (
-    <section class="hero">
+    <section class="hero" aria-labelledby="hero-title">
       <div class="container hero-inner">
         <div class="hero-copy">
-          <p class="eyebrow">Westfield knife sharpening · Picked up at your door</p>
-          <h1>
-            Good food starts with a <span class="hero-highlight">sharp knife.</span>
+          <p class="hero-kicker">
+            <span class="stamp">Westfield, NJ</span>
+            <span>Picked up at your door · No shipping</span>
+          </p>
+          <h1 id="hero-title">
+            Good food starts with a <em>sharp knife.</em>
           </h1>
-          <p class="hero-subhead">
+          <p class="hero-lede">
             A fresh edge for your kitchen favourites. We pick up, sharpen, and bring your knives
             home. You get back to the good part: cooking.
           </p>
-          <p class="hero-price">
-            <strong>{formatMoney(price.bundle_price_cents, price.currency)}</strong> for{" "}
-            {price.knives_included} knives{" "}
-            <a href="#pricing">
-              See what’s included <Icon name="arrow" size={16} />
-            </a>
-          </p>
-          <div class="hero-ctas">
-            <Button size="lg" onClick={onBook} arrow>
-              {offer.cta_primary}
-            </Button>
+
+          <div class="hero-ticket ticket">
+            <div class="hero-price">
+              <span class="hero-amount">
+                {formatMoney(price.bundle_price_cents, price.currency)}
+              </span>
+              <span>
+                for {knives}
+                <span class="muted">
+                  Extra knives {formatMoney(price.extra_knife_price_cents, price.currency)} each
+                </span>
+              </span>
+            </div>
+            {nextPickup && (
+              <div class="hero-next">
+                <span class="hero-next-label">Next pickup</span>
+                <strong>{formatCareDay(nextPickup)}</strong>
+                <span class="muted">8am – 12pm</span>
+              </div>
+            )}
+          </div>
+
+          <div class="hero-actions">
+            <button
+              type="button"
+              class="btn btn-primary btn-lg hero-cta"
+              onClick={onBook}
+              onPointerEnter={onIntent}
+              onPointerDown={onIntent}
+              onFocus={onIntent}
+            >
+              <span>{offer.cta_primary}</span>
+              <span class="btn-arrow" aria-hidden="true">
+                →
+              </span>
+            </button>
             <a class="film-jump" href="#process-film">
               <span class="film-play" aria-hidden="true" />
-              Watch the 22-second film
+              Watch the film
             </a>
           </div>
-          <p class="hero-promise">
-            Choose a pickup date when booking. Return timing is arranged separately.
-          </p>
-          <button type="button" class="pilot-link" onClick={onPilot}>
-            {offer.cta_secondary} <Icon name="arrow" size={16} />
+          <p class="hero-assure">See your total before you pay · Secure card payment via Stripe</p>
+          <button type="button" class="link-quiet" onClick={onPilot}>
+            or join the Always Sharp waitlist
           </button>
         </div>
-        <figure class="hero-media">
-          <img
-            src="/images/oak-kitchen.webp"
-            width="1024"
-            height="768"
-            alt="A chef’s knife and colourful fresh vegetables on an oak chopping board in a sunny kitchen."
-            fetchpriority="high"
-          />
-          <figcaption>Made for the meals, and moments, at home.</figcaption>
+        <div class="hero-board">
+          <CuttingBoard />
           <span class="kitchen-stamp" aria-hidden="true">
             Chop chop.
             <br />
             Let’s cook!
           </span>
-        </figure>
+        </div>
       </div>
     </section>
   );

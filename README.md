@@ -12,6 +12,7 @@ packages/shared      Domain types, experiment registry, pricing, validation
 packages/ui          Reusable Preact components + design tokens
 infrastructure       Terraform: S3, CloudFront, Lambda, API Gateway, DynamoDB
 docs                 Experiment plan, pricing tests, analytics events, ops
+marketing            Print flyers and the homepage launch video (source + render scripts)
 .github/workflows    test.yml (CI), deploy-staging.yml (manual), deploy.yml (prod, on push to main)
 ```
 
@@ -199,5 +200,8 @@ aws cloudfront create-invalidation --distribution-id $(terraform output -raw clo
 - **Data retention**: analytics events are deleted after 90 days (D1
   `expires_at` and the cleanup Worker; DynamoDB TTL in the legacy AWS build);
   orders and signups are kept. See `docs/analytics-privacy.md`.
-- Replace `apps/web/public/images/hero.svg` with real photography before
-  printing flyers; see the README in that folder.
+- **Look and feel** ("Workshop paper"): tokens and components in
+  `packages/ui/src/styles.css`, inked art in `apps/web/src/art/`, and the
+  hero's fruit-slicing toy in `apps/web/src/toy/` (decorative, lazy, off for
+  reduced motion). Booking is a two-step sheet in
+  `apps/web/src/forms/BookingForm.tsx`.
