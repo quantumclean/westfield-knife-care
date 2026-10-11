@@ -70,9 +70,11 @@ async function submit() {
       .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
   });
 }
-async function search() {
+async function openSearch() {
   await click("Find address with Apple Maps");
-  const query = container.querySelector<HTMLInputElement>("[role=combobox]")!;
+  return container.querySelector<HTMLInputElement>("[role=combobox]")!;
+}
+async function pick(query: HTMLInputElement) {
   await act(async () => {
     query.value = "123 Elm";
     query.dispatchEvent(new Event("input", { bubbles: true }));
@@ -86,6 +88,9 @@ async function search() {
       new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
     );
   });
+}
+async function search() {
+  await pick(await openSearch());
 }
 
 beforeEach(async () => {
@@ -195,6 +200,17 @@ describe("Apple selection in the controlled booking sheet", () => {
     expect(container.textContent).not.toContain("Enter the street address for pickup.");
     expect(container.textContent).not.toContain("Enter a 5-digit ZIP code.");
     expect(container.textContent).toContain("Enter a valid email address.");
+  });
+  it("leaves focus in the search box when a selection clears only some errors", async () => {
+    await input("email", "invalid");
+    await submit(); // flags the email and every empty address field
+    const query = await openSearch();
+    await act(async () => {
+      query.focus();
+    });
+    await pick(query);
+    // The remaining email error must not drag the cursor out of the search box.
+    expect(document.activeElement).toBe(query);
   });
   it("replaces an out-of-area error with checkout after an in-area ZIP+4 selection", async () => {
     await input("zip", "10001");

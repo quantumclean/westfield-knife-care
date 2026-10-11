@@ -160,10 +160,12 @@ export function BookingDialog({
     Boolean(draft && (draft.contact.line2 || draft.contact.notes)),
   );
   const [errors, setErrors] = useState<Errors>({});
+  // Bumped only by showErrors, so per-field checks never move the cursor.
+  const [errorsReportedAt, setErrorsReportedAt] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
-  useFocusFirstInvalid(formRef, errors);
+  useFocusFirstInvalid(formRef, errorsReportedAt);
 
   const fallbackDays = useMemo(() => upcomingCareDays(), []);
   const careDays =
@@ -301,11 +303,13 @@ export function BookingDialog({
     }
   }
 
+  /** Report a failed submit: reveal the fields it names and focus the first one. */
   function showErrors(next: Errors) {
     const keys = Object.keys(next);
     if (keys.some((k) => STEP_ONE_FIELDS.has(k))) setStep(1);
     if (keys.some((k) => EXTRA_FIELDS.has(k))) setMoreOpen(true);
     setErrors(next);
+    setErrorsReportedAt((n) => n + 1);
   }
 
   const quickCounts = Array.from({ length: Math.min(5, price.max_knives) }, (_, i) => i + 1);

@@ -37,11 +37,12 @@ export interface PilotFormProps {
 
 export function PilotForm({ session, prefill }: PilotFormProps) {
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [errorsReportedAt, setErrorsReportedAt] = useState(0);
   const [failure, setFailure] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
-  useFocusFirstInvalid(formRef, errors);
+  useFocusFirstInvalid(formRef, errorsReportedAt);
 
   async function onSubmit(event: Event) {
     event.preventDefault();
@@ -60,6 +61,7 @@ export function PilotForm({ session, prefill }: PilotFormProps) {
       const next: Record<string, string> = {};
       for (const issue of parsed.error.issues) next[issue.path.join(".")] ??= issue.message;
       setErrors(next);
+      setErrorsReportedAt((n) => n + 1);
       track(EVENTS.form_error, { form: "pilot", fields: Object.keys(next).join(",") });
       return;
     }
