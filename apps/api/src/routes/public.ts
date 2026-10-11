@@ -110,6 +110,8 @@ export function publicRoutes(deps: Deps) {
     if (!body.ok) return c.json({ error: body.error }, body.status);
     const parsed = parseEventPayload(body.value);
     if (!parsed.ok) return c.json({ error: "invalid_event" }, 400);
+    if (parsed.events.some((e) => e.view_id !== "legacy-v1" && !e.owner))
+      return c.json({ error: "invalid_event" }, 400);
     const created_at = deps.now().toISOString();
     const events = parsed.events.map((input): AnalyticsEvent => {
       const { experiment, offer, price } = resolveContext(input.experiment_id);

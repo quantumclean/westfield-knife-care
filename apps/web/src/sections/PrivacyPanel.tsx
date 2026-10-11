@@ -24,7 +24,7 @@ export function PrivacyPanel() {
   async function forget() {
     setStatus("working");
     const visitor = storedVisitorId();
-    const erased = visitor ? await forgetThisDevice(visitor) : true;
+    const erased = visitor ? await forgetThisDevice(visitor) : false;
     if (!visitor) update({ measurement: "off", google: "denied" });
     setChoices(readChoices());
     setStatus(erased ? "deleted" : "unreachable");
@@ -97,13 +97,14 @@ export function PrivacyPanel() {
       </div>
       {status === "deleted" && (
         <Notice tone="success">
-          Done. Usage counts from this browser were deleted, and counting is now off here.
+          Owned usage records were deleted and counting is off. Older records without a deletion key
+          and Google’s records cannot be erased here; contact us for help.
         </Notice>
       )}
       {status === "unreachable" && (
         <Notice tone="error">
-          We could not reach our server, so nothing was deleted there yet. Counting is now off in
-          this browser. Please try again later, or email {BRAND.support_email}.
+          Deletion could not be confirmed. Counting is off, and any saved deletion key is kept for a
+          retry. If this browser has no key, contact {BRAND.support_email}.
         </Notice>
       )}
       <p class="muted privacy-contact">

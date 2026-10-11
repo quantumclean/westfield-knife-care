@@ -45,7 +45,7 @@ describe("first-party events", () => {
       route: "/a",
       device: "mobile",
       viewport: "xs",
-      visitor_id: "visitor-00000001",
+      visitor_id: "00000000-0000-4000-8000-000000000001",
     });
     expect(events[2]!.props).toEqual({ form: "booking", fields: "email,zip" });
     expect(events[3]!.props).toEqual({ total_cents: 3900 });
@@ -225,7 +225,7 @@ describe("Google Analytics", () => {
     expect(events).toEqual(["page_view", "checkout_started"]); // form_error is first-party only
     const text = JSON.stringify(calls);
     for (const secret of [
-      "visitor-00000001",
+      "00000000-0000-4000-8000-000000000001",
       "order-123",
       "o-1",
       "cs_live_1",

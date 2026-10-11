@@ -74,3 +74,15 @@ Parameters:
   Cloudflare logs for that time.
 - GA4 (if ever enabled) sees only opted-in visitors, so its numbers will be far lower. Do
   not compare them with these.
+
+## Interpretation and review requirements
+
+Browser visitors/steps are untrusted estimates, not verified people or a sequential cohort
+funnel. Bots may invent ids despite server budgets. Orders and net revenue are confirmed
+server-state totals over **order creation time**, without the old 5,000-record cap; they can
+exceed measured visitors. Refunded orders remain paid outcomes, with refunds deducted from
+revenue. Window filters also apply to waitlist signups. Device/viewport use one first retained
+page view in the same arm/window, before order creation; missing telemetry is `unknown`.
+Source labels are registered ids even for historical/paid data. Result cardinality is finite;
+D1 scan cost is not independent of traffic. See analytics-privacy.md for migration 0005,
+cleanup acceptance, Google automatic-measurement prerequisites and legacy AWS limits.

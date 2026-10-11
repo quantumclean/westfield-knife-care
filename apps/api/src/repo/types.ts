@@ -1,3 +1,4 @@
+import type { CommerceArm } from "./commerce-report.ts";
 import type { AnalyticsReport, ReportWindow, VisitorProfile } from "./analytics-report.ts";
 import {
   EVENT_RETENTION_DAYS,
@@ -74,5 +75,6 @@ export interface Repository {
   /** Aggregates for /admin/summary and /admin/insights, computed by the store (no raw events). */
   analyticsReport(window?: ReportWindow): Promise<AnalyticsReport>;
   /** Device and viewport of specific visitors (paid-order joins), looked up in small chunks. */
-  visitorProfiles(visitorIds: string[]): Promise<VisitorProfile[]>;
+  visitorProfiles(visitorIds: string[], window?: ReportWindow): Promise<VisitorProfile[]>;
+  commerceReport(window?: ReportWindow): Promise<CommerceArm[]>;
 }

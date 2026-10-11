@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { VISITOR_ID_PATTERN } from "./analytics.ts";
 import { isServedZip } from "./content.ts";
 import {
   ACQUISITION_CHANNELS,
@@ -40,7 +41,7 @@ export const sourceSchema = z
   .toLowerCase()
   .regex(/^[a-z0-9][a-z0-9._-]{0,63}$/);
 export const acquisitionChannelSchema = z.enum(ACQUISITION_CHANNELS);
-export const visitorIdSchema = z.string().trim().min(8).max(64);
+export const visitorIdSchema = z.string().regex(VISITOR_ID_PATTERN);
 
 /** Shown (and returned by the API) for a valid ZIP outside the service area. */
 export const OUT_OF_AREA = "We don't pick up in this ZIP code yet.";

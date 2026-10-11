@@ -125,7 +125,7 @@ beforeEach(async () => {
     onClose: vi.fn(),
     experiment,
     session: {
-      visitor_id: "visitor-address-test",
+      visitor_id: "00000000-0000-4000-8000-000000000001",
       experiment,
       attribution: { source: "direct", acquisition_channel: "direct" },
     },

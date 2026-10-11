@@ -94,18 +94,18 @@ describe("privacy choices", () => {
   it("deleting erases this browser's events, forgets its ids, keeps its price, and stops counting", async () => {
     const { browser, forgetThisDevice, measurementAllowed } = await consent({
       storage: {
-        "wkc.visitor_id": "visitor-00000001",
+        "wkc.visitor_id": "00000000-0000-4000-8000-000000000001",
         "wkc.attribution": '{"source":"flyer-a","acquisition_channel":"print"}',
         "wkc.experiment_id": "experiment-001",
         "wkc.analytics_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
       },
     });
-    expect(await forgetThisDevice("visitor-00000001")).toBe(true);
+    expect(await forgetThisDevice("00000000-0000-4000-8000-000000000001")).toBe(true);
     // Proof of possession: the key goes only to the erase request.
     expect(browser.requests).toEqual([
       {
         url: "/api/events/forget",
-        body: '{"visitor_id":"visitor-00000001","key":"kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"}',
+        body: '{"visitor_id":"00000000-0000-4000-8000-000000000001","key":"kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"}',
       },
     ]);
     expect(browser.storage.has("wkc.analytics_key")).toBe(false);
@@ -120,7 +120,7 @@ describe("privacy choices", () => {
       status: "reject",
       storage: { "wkc.analytics_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk" },
     });
-    expect(await forgetThisDevice("visitor-00000001")).toBe(false);
+    expect(await forgetThisDevice("00000000-0000-4000-8000-000000000001")).toBe(false);
     expect(measurementAllowed()).toBe(false);
   });
 });

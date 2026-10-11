@@ -41,7 +41,7 @@ or URLs.**
 | `view_id`             | random per page load (bounces, once-per-view dedup); not stored in the browser        |
 | `visitor_id`          | random id in localStorage (`wkc.visitor_id`); first-party only, never sent to GA4     |
 | `experiment_id`       | assigned arm; offer and price versions are resolved by the API                        |
-| `source`              | first-touch tag (`?src=`, `utm_source`, referrer host); identifying tags → `other`    |
+| `source`              | registered source id (`ANALYTICS_SOURCES`); all unregistered tags → `other`           |
 | `acquisition_channel` | `print`, `social`, `referral`, `search`, `direct`, `partner`, `other`                 |
 | `page`                | route id: `/`, `/a`, `/b`, `/thanks` or `other` (never a raw path or query)           |
 | `device`              | `mobile` (< 640px), `tablet` (touch, < 1366px), `desktop`, `unknown` (pre-v2)         |
@@ -141,3 +141,14 @@ v2 (dropping `order_id` and other unlisted props) and validates them strictly. T
 2. Call `track(EVENTS.name, props)`, or observe it in `engagement.ts`.
 3. Add it to the dictionary above and, if it is a step, to `services/insights.ts`.
 4. The shared catalog tests reject free-text props and identifier-like prop names.
+
+## Independent review hardening
+
+V2 ingestion requires an owner hash, a random-format visitor id, registered experiment and
+consistent visitor/view/context within a batch. Unknown sources map to `other`. Event ids
+are random UUIDs (or the browser timestamp/random fallback), not arbitrary text. The API
+adds request/unit limits and atomic per-view budgets. These protect capacity, not human
+identity: public UX metrics remain untrusted estimates. Deletion proof does not authenticate
+ingestion. Financial outcomes use complete windowed SQL aggregates, never client completions.
+Apply migrations 0003, 0004 and 0005 before enabling the revised analytics API, and run
+the revised scheduled cleanup for both expired events and deletion tombstones.

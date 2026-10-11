@@ -1,4 +1,10 @@
-import type { AnalyticsEvent, Order, WaitlistEntry } from "@wkc/shared";
+import {
+  MAX_EVENTS_PER_VIEW,
+  type AnalyticsEvent,
+  type Order,
+  type WaitlistEntry,
+} from "@wkc/shared";
+import { commerceFromRecords, type CommerceArm } from "./commerce-report.ts";
 import {
   profilesFromEvents,
   reportFromEvents,
@@ -24,6 +30,7 @@ export class MemoryRepository implements Repository {
   private orders = new Map<string, Order>();
   private waitlist = new Map<string, WaitlistEntry>();
   private events = new Map<string, AnalyticsEvent>();
+  private deletions = new Set<string>();
 
   async putOrder(order: Order): Promise<void> {
     const stored = this.orders.get(order.id);
@@ -63,6 +70,25 @@ export class MemoryRepository implements Repository {
 
   async putEvents(events: AnalyticsEvent[]): Promise<void> {
     for (const event of events) {
+      if (this.deletions.has(`${event.visitor_id}:${event.owner ?? ""}`)) continue;
+      const view = [...this.events.values()].filter(
+        (e) =>
+          e.view_id === event.view_id &&
+          (event.view_id !== "legacy-v1" || e.visitor_id === event.visitor_id),
+      );
+      if (
+        view.length >= MAX_EVENTS_PER_VIEW ||
+        view.some(
+          (e) =>
+            e.visitor_id !== event.visitor_id ||
+            e.owner !== event.owner ||
+            e.experiment_id !== event.experiment_id ||
+            e.source !== event.source ||
+            e.acquisition_channel !== event.acquisition_channel ||
+            e.page !== event.page,
+        )
+      )
+        continue;
       if (!this.events.has(event.id)) this.events.set(event.id, structuredClone(event));
     }
   }
@@ -79,6 +105,7 @@ export class MemoryRepository implements Repository {
   }
 
   async deleteVisitorEvents(visitorId: string, ownerHash: string): Promise<number> {
+    this.deletions.add(`${visitorId}:${ownerHash}`);
     let removed = 0;
     for (const [id, event] of this.events) {
       if (event.visitor_id === visitorId && event.owner === ownerHash && this.events.delete(id))
@@ -101,7 +128,19 @@ export class MemoryRepository implements Repository {
     return reportFromEvents(this.windowEvents(window));
   }
 
-  async visitorProfiles(visitorIds: string[]): Promise<VisitorProfile[]> {
-    return profilesFromEvents(this.windowEvents(), visitorIds);
+  async commerceReport(window: ReportWindow = {}): Promise<CommerceArm[]> {
+    return commerceFromRecords(
+      [...this.orders.values()],
+      [...this.waitlist.values()],
+      this.windowEvents(window),
+      window,
+    );
+  }
+
+  async visitorProfiles(
+    visitorIds: string[],
+    window: ReportWindow = {},
+  ): Promise<VisitorProfile[]> {
+    return profilesFromEvents(this.windowEvents(window), visitorIds);
   }
 }

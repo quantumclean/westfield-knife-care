@@ -13,7 +13,7 @@ const validOrder = {
   experiment_id: "experiment-001",
   source: "flyer-v1-qr",
   acquisition_channel: "print",
-  visitor_id: "visitor-12345678",
+  visitor_id: "00000000-0000-4000-8000-000012345678",
   customer: {
     name: "Ada Lovelace",
     email: "ADA@Example.com ",
@@ -124,7 +124,7 @@ describe("createEventSchema", () => {
     event_id: "0b6f8f5e-1c1f-4a52-9b1e-6a4f3f1d2c3b",
     view_id: "5d0e7f1a-2b3c-4d5e-8f90-a1b2c3d4e5f6",
     experiment_id: "experiment-001",
-    visitor_id: "visitor-12345678",
+    visitor_id: "00000000-0000-4000-8000-000012345678",
     route: "/a",
     device: "mobile",
     viewport: "sm",

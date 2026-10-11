@@ -44,7 +44,7 @@ function dataset(count: number, visitors: number, seed = 7): AnalyticsEvent[] {
       id: `ev-${String(i).padStart(7, "0")}`,
       created_at: new Date(start + Math.floor(random() * 19 * 86_400_000)).toISOString(),
       name,
-      visitor_id: `visitor-${String(v).padStart(8, "0")}`,
+      visitor_id: `00000000-0000-4000-8000-${String(v).padStart(12, "0")}`,
       experiment_id: v % 2 ? "experiment-001" : "experiment-002",
       offer_version: "x",
       price_version: "x",
@@ -94,7 +94,11 @@ describe("analytics aggregates: D1 SQL matches the reference implementation", ()
     expect(canonicalReport(await repo.analyticsReport(window))).toEqual(
       canonicalReport(await memory.analyticsReport(window)),
     );
-    const ids = ["visitor-00000001", "visitor-00000002", "visitor-99999999"];
+    const ids = [
+      "00000000-0000-4000-8000-000000000001",
+      "00000000-0000-4000-8000-000000000002",
+      "00000000-0000-4000-8000-000099999999",
+    ];
     const sortById = (rows: { visitor_id: string }[]) =>
       [...rows].sort((a, b) => a.visitor_id.localeCompare(b.visitor_id));
     expect(sortById(await repo.visitorProfiles(ids))).toEqual(
@@ -130,10 +134,13 @@ describe("analytics aggregates at scale", () => {
       .prepare(
         "EXPLAIN QUERY PLAN SELECT 1 FROM analytics_events WHERE json_extract(data, '$.visitor_id') = ?",
       )
-      .all("visitor-00000001") as { detail: string }[];
+      .all("00000000-0000-4000-8000-000000000001") as { detail: string }[];
     expect(plan.map((p) => p.detail).join(" ")).toContain("events_visitor_idx");
     const profiled = performance.now();
-    const ids = Array.from({ length: 500 }, (_, i) => `visitor-${String(i).padStart(8, "0")}`);
+    const ids = Array.from(
+      { length: 500 },
+      (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+    );
     expect((await repo.visitorProfiles(ids)).length).toBeGreaterThan(0);
     expect(performance.now() - profiled).toBeLessThan(5_000);
   }, 120_000);

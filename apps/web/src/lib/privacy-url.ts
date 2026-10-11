@@ -1,4 +1,4 @@
-import { routeId } from "@wkc/shared";
+import { ANALYTICS_SOURCES, EXPERIMENTS, ACQUISITION_CHANNELS, routeId } from "@wkc/shared";
 
 /**
  * Campaign tags are the only query parameters any analytics tool may see. Everything else is
@@ -14,13 +14,6 @@ export const ALLOWED_QUERY_PARAMS = [
   "utm_campaign",
 ] as const;
 
-/** Short lowercase tags only; no "@", spaces, long digit runs (phone numbers) or long values. */
-function safeTag(value: string | null): string | undefined {
-  const tag = value?.trim().toLowerCase();
-  if (!tag || !/^[a-z0-9][a-z0-9._-]{0,39}$/.test(tag) || /\d{7,}/.test(tag)) return undefined;
-  return tag;
-}
-
 /**
  * The page URL as analytics may record it: origin, a known route (unknown paths become
  * "/other") and allowlisted campaign tags. Fragments are dropped. Returns "" if unparsable.
@@ -30,7 +23,14 @@ export function sanitizePageUrl(href: string): string {
     const url = new URL(href);
     const out = new URL(url.origin + routeId(url.pathname).replace(/^other$/, "/other"));
     for (const key of ALLOWED_QUERY_PARAMS) {
-      const tag = safeTag(url.searchParams.get(key));
+      const value = url.searchParams.get(key)?.trim().toLowerCase();
+      const allowed: readonly string[] =
+        key === "exp"
+          ? EXPERIMENTS.map((e) => e.id)
+          : key === "ch" || key === "utm_medium"
+            ? ACQUISITION_CHANNELS
+            : ANALYTICS_SOURCES;
+      const tag = value && allowed.includes(value) ? value : undefined;
       if (tag) out.searchParams.set(key, tag);
     }
     return out.toString();
@@ -42,7 +42,20 @@ export function sanitizePageUrl(href: string): string {
 /** The referrer as analytics may record it: its origin only, or "" if none or unparsable. */
 export function sanitizeReferrer(referrer: string): string {
   try {
-    return referrer ? new URL(referrer).origin : "";
+    if (!referrer) return "";
+    const url = new URL(referrer);
+    return [
+      "www.google.com",
+      "google.com",
+      "bing.com",
+      "www.bing.com",
+      "duckduckgo.com",
+      "www.instagram.com",
+      "www.facebook.com",
+      "nextdoor.com",
+    ].includes(url.hostname) && url.protocol === "https:"
+      ? url.origin
+      : "";
   } catch {
     return "";
   }

@@ -1,9 +1,13 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { ADMIN_KEY, WEBHOOK_SECRET, json, makeDeps, readJson, validOrder } from "./helpers.ts";
 
 const admin = { headers: { "x-admin-key": ADMIN_KEY } };
 let seq = 0;
 const id = () => `00000000-0000-4000-8000-${String(++seq).padStart(12, "0")}`;
+
+const visitorId = (value: string) =>
+  `00000000-0000-4000-8000-${createHash("sha256").update(value).digest("hex").slice(0, 12)}`;
 
 type App = ReturnType<typeof makeDeps>["app"];
 
@@ -23,7 +27,8 @@ async function visit(app: App, { visitor, arm, device = "mobile", steps = [] }: 
     experiment_id: arm === "a" ? "experiment-001" : "experiment-002",
     source: arm === "a" ? "flyer-a" : "flyer-b",
     acquisition_channel: "print",
-    visitor_id: visitor,
+    visitor_id: visitorId(visitor),
+    owner: "f".repeat(64),
     route: `/${arm}`,
     device,
     viewport: device === "mobile" ? "xs" : "lg",
@@ -42,7 +47,7 @@ async function paidOrder(app: App, visitor: string, experiment = "experiment-001
   const created = await readJson(
     await app.request(
       "/api/orders",
-      json("POST", { ...validOrder, experiment_id: experiment, visitor_id: visitor }),
+      json("POST", { ...validOrder, experiment_id: experiment, visitor_id: visitorId(visitor) }),
     ),
   );
   await app.request(
@@ -180,31 +185,32 @@ describe("GET /api/admin/insights", () => {
     const { app } = makeDeps();
     const base = {
       v: 2,
+      owner: "f".repeat(64),
       experiment_id: "experiment-001",
-      visitor_id: "visitor-00000001",
+      visitor_id: "00000000-0000-4000-8000-000000000001",
       route: "/a",
       device: "mobile",
       viewport: "xs",
     };
     const bounced = { ...base, view_id: id() };
     const engaged = { ...base, view_id: id() };
-    await app.request(
-      "/api/events",
-      json("POST", {
-        events: [
-          { ...bounced, event_id: id(), name: "page_view" },
-          {
-            ...bounced,
-            event_id: id(),
-            name: "page_engagement",
-            props: { time: "<10s", max_scroll: 0 },
-          },
-          { ...engaged, event_id: id(), name: "page_view" },
-          { ...engaged, event_id: id(), name: "scroll_depth", props: { percent: 50 } },
-          { ...engaged, event_id: id(), name: "scroll_depth", props: { percent: 50 } },
-        ],
-      }),
-    );
+    for (const events of [
+      [
+        { ...bounced, event_id: id(), name: "page_view" },
+        {
+          ...bounced,
+          event_id: id(),
+          name: "page_engagement",
+          props: { time: "<10s", max_scroll: 0 },
+        },
+      ],
+      [
+        { ...engaged, event_id: id(), name: "page_view" },
+        { ...engaged, event_id: id(), name: "scroll_depth", props: { percent: 50 } },
+        { ...engaged, event_id: id(), name: "scroll_depth", props: { percent: 50 } },
+      ],
+    ])
+      expect((await app.request("/api/events", json("POST", { events }))).status).toBe(204);
     const report = await insights(app);
     expect(report.duplicates_ignored).toBe(1);
     expect(report.arms[0].engagement).toMatchObject({ landing_views: 2, bounce_rate: 0.5 });

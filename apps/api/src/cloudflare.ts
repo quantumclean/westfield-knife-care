@@ -1,3 +1,4 @@
+import { BODY_LIMITS, readJsonBody } from "./services/request-body.ts";
 import { createApp } from "./app.ts";
 import type { Config } from "./config.ts";
 import { jsonLog, newId, newToken, type Deps } from "./deps.ts";
@@ -48,6 +49,7 @@ async function withinRateLimit(
   scope: string,
   limit: number,
   orderId?: string,
+  cost = 1,
 ): Promise<boolean> {
   const minute = Math.floor(Date.now() / 60000);
   // Hash the complete identity so neither the IP nor an order ID appears in D1 buckets.
@@ -58,10 +60,10 @@ async function withinRateLimit(
     .join("");
   const result = await db
     .prepare(
-      "INSERT INTO api_rate_limits (bucket, hits, expires_at) VALUES (?, 1, ?) " +
-        "ON CONFLICT(bucket) DO UPDATE SET hits = hits + 1 RETURNING hits",
+      "INSERT INTO api_rate_limits (bucket, hits, expires_at) VALUES (?, ?, ?) " +
+        "ON CONFLICT(bucket) DO UPDATE SET hits = hits + excluded.hits RETURNING hits",
     )
-    .bind(scope + ":" + minute + ":" + identifier, (minute + 2) * 60)
+    .bind(scope + ":" + minute + ":" + identifier, cost, (minute + 2) * 60)
     .first<{ hits: number }>();
   return Boolean(result && result.hits <= limit);
 }
@@ -133,6 +135,16 @@ export async function handlePagesApi(request: Request, env: PagesBindings): Prom
     try {
       if (!(await withinRateLimit(env.DB, salt, ip, policy.scope, policy.limit)))
         return rateLimited();
+      if (request.method === "POST" && path === "/api/events") {
+        const body = await readJsonBody(request.clone(), BODY_LIMITS.event);
+        if (!body.ok) return Response.json({ error: body.error }, { status: body.status });
+        const value = body.value as { events?: unknown[] } | null;
+        const cost = Array.isArray(value?.events)
+          ? Math.max(1, Math.min(20, value.events.length))
+          : 1;
+        if (!(await withinRateLimit(env.DB, salt, ip, "event-units", 1200, undefined, cost)))
+          return rateLimited();
+      }
       if (request.method === "POST" && feedbackWrite.test(path)) {
         const orderId = path.slice("/api/orders/".length, -"/feedback".length);
         if (!(await withinRateLimit(env.DB, salt, ip, "feedback-order", 10, orderId)))

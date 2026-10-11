@@ -31,7 +31,7 @@ const envelope = {
   experiment_id: "experiment-002",
   source: "flyer-b",
   acquisition_channel: "print",
-  visitor_id: "visitor-12345678",
+  visitor_id: "00000000-0000-4000-8000-000012345678",
   route: "/b",
   device: "desktop",
   viewport: "lg",
@@ -194,13 +194,13 @@ describe("context buckets", () => {
     expect(analyticsSource("flyer-a")).toBe("flyer-a");
     expect(analyticsSource(undefined)).toBe("direct");
     expect(analyticsSource("9085550123")).toBe("other");
-    expect(analyticsSource("ada@example.com")).toBe("direct");
+    expect(analyticsSource("ada@example.com")).toBe("other");
     expect(formFieldId("customer.phone")).toBe("phone");
   });
 });
 
 describe("parseEventPayload", () => {
-  it("accepts a batch of v2 events from either flyer arm", () => {
+  it("rejects mixed experiment contexts in one page batch", () => {
     const parsed = parseEventPayload({
       events: [
         { ...envelope, name: "page_view" },
@@ -213,10 +213,7 @@ describe("parseEventPayload", () => {
         },
       ],
     });
-    expect(parsed.ok && parsed.events.map((e) => [e.experiment_id, e.route])).toEqual([
-      ["experiment-002", "/b"],
-      ["experiment-001", "/a"],
-    ]);
+    expect(parsed.ok).toBe(false);
   });
 
   it("rejects the whole batch if any event carries personal data", () => {
@@ -237,7 +234,7 @@ describe("parseEventPayload", () => {
   it("normalises a v1 event from a tab opened before the deploy", () => {
     const parsed = parseEventPayload({
       experiment_id: "experiment-001",
-      visitor_id: "visitor-12345678",
+      visitor_id: "00000000-0000-4000-8000-000012345678",
       name: "checkout_started",
       page: "/thanks",
       props: { order_id: "id-1", total_cents: 3900 },
@@ -257,7 +254,7 @@ describe("parseEventPayload", () => {
     expect(
       parseEventPayload({
         experiment_id: "experiment-001",
-        visitor_id: "visitor-12345678",
+        visitor_id: "00000000-0000-4000-8000-000012345678",
         name: "anything_goes",
       }).ok,
     ).toBe(false);
@@ -279,9 +276,12 @@ describe("deletion proof of possession", () => {
     expect(await ownerHashOf("w".repeat(43))).not.toBe(owner);
     expect(parse({ events: [{ ...envelope, name: "page_view", owner }] }).ok).toBe(true);
     expect(parse({ events: [{ ...envelope, name: "page_view", owner: key }] }).ok).toBe(false);
-    expect(forgetVisitorSchema.safeParse({ visitor_id: "visitor-12345678" }).success).toBe(false);
-    expect(forgetVisitorSchema.safeParse({ visitor_id: "visitor-12345678", key }).success).toBe(
-      true,
-    );
+    expect(
+      forgetVisitorSchema.safeParse({ visitor_id: "00000000-0000-4000-8000-000012345678" }).success,
+    ).toBe(false);
+    expect(
+      forgetVisitorSchema.safeParse({ visitor_id: "00000000-0000-4000-8000-000012345678", key })
+        .success,
+    ).toBe(true);
   });
 });

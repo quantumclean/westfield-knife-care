@@ -1,10 +1,18 @@
 import {
   ERROR_KINDS,
+  ANALYTICS_SOURCES,
+  EXPERIMENTS,
+  ACQUISITION_CHANNELS,
+  DEVICE_CLASSES,
+  VIEWPORT_BANDS,
+  CATALOG,
+  MAX_EVENTS_PER_VIEW,
   FORM_FIELDS,
   type AnalyticsEvent,
   type Order,
   type WaitlistEntry,
 } from "@wkc/shared";
+import { emptyCommerce, type CommerceArm } from "./commerce-report.ts";
 import {
   INTERACTIONS,
   LANDING_ROUTES,
@@ -155,7 +163,14 @@ export class D1Repository implements Repository {
       this.db
         .prepare(
           "INSERT INTO analytics_events (id, created_at, experiment_id, expires_at, data) " +
-            "VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
+            "SELECT ?, ?, ?, ?, ? WHERE " +
+            "NOT EXISTS (SELECT 1 FROM analytics_deletions WHERE visitor_id = ? AND owner = ?) " +
+            "AND (SELECT COUNT(*) FROM analytics_events WHERE json_extract(data, '$.view_id') = ? AND (? <> 'legacy-v1' OR json_extract(data, '$.visitor_id') = ?)) < ? " +
+            "AND NOT EXISTS (SELECT 1 FROM analytics_events WHERE json_extract(data, '$.view_id') = ? AND (? <> 'legacy-v1' OR json_extract(data, '$.visitor_id') = ?) " +
+            "AND (json_extract(data, '$.visitor_id') <> ? OR COALESCE(json_extract(data, '$.owner'), '') <> ? " +
+            "OR experiment_id <> ? OR json_extract(data, '$.source') <> ? " +
+            "OR json_extract(data, '$.acquisition_channel') <> ? OR json_extract(data, '$.page') <> ?)) " +
+            "ON CONFLICT(id) DO NOTHING",
         )
         .bind(
           event.id,
@@ -163,6 +178,21 @@ export class D1Repository implements Repository {
           event.experiment_id,
           eventExpiresAt(event.created_at),
           JSON.stringify(event),
+          event.visitor_id,
+          event.owner ?? "",
+          event.view_id ?? event.id,
+          event.view_id ?? event.id,
+          event.visitor_id,
+          MAX_EVENTS_PER_VIEW,
+          event.view_id ?? event.id,
+          event.view_id ?? event.id,
+          event.visitor_id,
+          event.visitor_id,
+          event.owner ?? "",
+          event.experiment_id,
+          event.source,
+          event.acquisition_channel,
+          event.page,
         ),
     );
     if (statements.length === 0) return;
@@ -197,14 +227,23 @@ export class D1Repository implements Repository {
   }
 
   async deleteVisitorEvents(visitorId: string, ownerHash: string): Promise<number> {
-    const result = await this.db
+    const tombstone = this.db
       .prepare(
-        "DELETE FROM analytics_events WHERE json_extract(data, '$.visitor_id') = ? " +
-          "AND json_extract(data, '$.owner') = ?",
+        "INSERT INTO analytics_deletions(visitor_id, owner, expires_at) VALUES (?, ?, ?) " +
+          "ON CONFLICT(visitor_id, owner) DO UPDATE SET expires_at = MAX(expires_at, excluded.expires_at)",
       )
-      .bind(visitorId, ownerHash)
-      .run();
-    return result.meta.changes;
+      .bind(visitorId, ownerHash, Math.floor(Date.now() / 1000) + 90 * 86400);
+    const remove = this.db
+      .prepare(
+        "DELETE FROM analytics_events WHERE json_extract(data, '$.visitor_id') = ? AND json_extract(data, '$.owner') = ?",
+      )
+      .bind(visitorId, ownerHash);
+    if (this.db.batch) {
+      const results = (await this.db.batch([tombstone, remove])) as { meta: { changes: number } }[];
+      return results[1]?.meta.changes ?? 0;
+    }
+    await tombstone.run(); // tombstone first also protects adapters without batch support
+    return (await remove.run()).meta.changes;
   }
 
   /**
@@ -223,13 +262,23 @@ export class D1Repository implements Repository {
       clauses.push("created_at < ?");
       values.push(window.until);
     }
+    const list = (items: readonly string[]) => items.map((i) => `'${i}'`).join(", ");
+    const canonical = (expr: string, allowed: readonly string[], fallback: string) =>
+      `CASE WHEN ${expr} IN (${list(allowed)}) THEN ${expr} ELSE '${fallback}' END`;
+    const j = (field: string) => `json_extract(data, '$.${field}')`;
     const base =
-      "WITH e AS (SELECT experiment_id AS exp, " +
-      "json_extract(data, '$.visitor_id') AS vid, json_extract(data, '$.view_id') AS view_id, " +
-      "json_extract(data, '$.name') AS name, json_extract(data, '$.page') AS page, " +
-      "json_extract(data, '$.device') AS device, json_extract(data, '$.viewport') AS viewport, " +
-      "json_extract(data, '$.acquisition_channel') AS channel, " +
-      "json_extract(data, '$.source') AS source, json_extract(data, '$.props') AS props " +
+      "WITH e AS (SELECT id, created_at, " +
+      canonical(
+        "experiment_id",
+        EXPERIMENTS.map((e) => e.id),
+        "unknown",
+      ) +
+      " AS exp, " +
+      `${j("visitor_id")} AS vid, ${j("view_id")} AS view_id, ` +
+      `${canonical(j("name"), Object.keys(CATALOG), "unknown")} AS name, ${canonical(j("page"), [...LANDING_ROUTES, "/thanks"], "other")} AS page, ` +
+      `${canonical(j("device"), DEVICE_CLASSES, "unknown")} AS device, ${canonical(j("viewport"), VIEWPORT_BANDS, "unknown")} AS viewport, ` +
+      `${canonical(j("acquisition_channel"), ACQUISITION_CHANNELS, "other")} AS channel, ` +
+      `${canonical(j("source"), ANALYTICS_SOURCES, "other")} AS source, ${j("props")} AS props ` +
       `FROM analytics_events WHERE ${clauses.join(" AND ")}) `;
     const all = async <T>(sql: string) =>
       (
@@ -238,14 +287,15 @@ export class D1Repository implements Repository {
           .bind(...values)
           .all<T>()
       ).results;
-    const list = (items: readonly string[]) => items.map((i) => `'${i}'`).join(", ");
     const engaging =
       `(name IN (${list(INTERACTIONS)}) ` +
       "OR (name = 'scroll_depth' AND json_extract(props, '$.percent') >= 50) " +
       "OR (name = 'page_engagement' AND COALESCE(json_extract(props, '$.time'), '<10s') <> '<10s'))";
     const flag = (expr: string) => `COALESCE(MAX(CASE WHEN ${expr} THEN 1 ELSE 0 END), 0)`;
-    const pick = (col: string) =>
-      `COALESCE(MAX(CASE WHEN name = 'page_view' THEN ${col} END), MAX(${col}), 'unknown')`;
+    // One first page-view row supplies every dimension together (then first event fallback).
+    const ranked =
+      ", ranked AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY exp, vid ORDER BY CASE WHEN name = 'page_view' THEN 0 ELSE 1 END, created_at, id) AS rn FROM e)";
+    const pick = (col: string) => `MAX(CASE WHEN rn = 1 THEN ${col} END)`;
 
     const [totals, steps, props, names, views, errors] = await Promise.all([
       all<{ events_read: number; duplicates: number }>(
@@ -254,7 +304,8 @@ export class D1Repository implements Repository {
           `FROM e WHERE name IN (${list(ONCE_PER_VIEW)})) AS duplicates`,
       ),
       all<StepRow>(
-        `, v AS (SELECT exp, vid, ${pick("device")} AS device, ${pick("viewport")} AS viewport, ` +
+        ranked +
+          `, v AS (SELECT exp, vid, ${pick("device")} AS device, ${pick("viewport")} AS viewport, ` +
           `${pick("channel")} AS channel, ${pick("source")} AS source, ` +
           `${flag("name = 'page_view'")} AS visited, ${flag(engaging)} AS engaged, ` +
           `${flag("name = 'cta_click'")} AS cta, ${flag("name = 'booking_opened'")} AS opened, ` +
@@ -262,7 +313,7 @@ export class D1Repository implements Repository {
           `${flag("name = 'booking_submitted'")} AS submitted, ` +
           `${flag("name = 'checkout_started'")} AS checkout, ` +
           `${flag("name = 'address_suggest' AND json_extract(props, '$.action') = 'chosen'")} AS chose ` +
-          "FROM e GROUP BY exp, vid) " +
+          "FROM ranked GROUP BY exp, vid) " +
           "SELECT exp AS experiment_id, device, viewport, channel, source, " +
           "SUM(visited) AS visited, SUM(engaged) AS engaged, SUM(cta) AS cta, SUM(opened) AS opened, " +
           "SUM(details) AS details, SUM(submitted) AS submitted, SUM(checkout) AS checkout, " +
@@ -272,13 +323,16 @@ export class D1Repository implements Repository {
           "FROM v GROUP BY exp, device, viewport, channel, source",
       ),
       all<PropRow>(
-        PROP_BREAKDOWNS.map(
-          ({ name, prop }) =>
+        PROP_BREAKDOWNS.map(({ name, prop }) => {
+          const spec = CATALOG[name as keyof typeof CATALOG].props[prop];
+          const allowed = spec?.kind === "enum" ? spec.values.map(String) : [];
+          return (
             `SELECT exp AS experiment_id, '${name}' AS name, '${prop}' AS prop, ` +
             `CAST(json_extract(props, '$.${prop}') AS TEXT) AS value, COUNT(DISTINCT vid) AS visitors ` +
-            `FROM e WHERE name = '${name}' AND json_extract(props, '$.${prop}') IS NOT NULL ` +
-            "GROUP BY exp, value",
-        ).join(" UNION ALL "),
+            `FROM e WHERE name = '${name}' AND CAST(json_extract(props, '$.${prop}') AS TEXT) IN (${list(allowed)}) ` +
+            "GROUP BY exp, value"
+          );
+        }).join(" UNION ALL "),
       ),
       all<NameRow>(
         "SELECT exp AS experiment_id, name, COUNT(DISTINCT vid) AS visitors FROM e GROUP BY exp, name",
@@ -336,23 +390,115 @@ export class D1Repository implements Repository {
     };
   }
 
+  /** Window filters precede aggregation: no list limit and no customer JSON returned. */
+  async commerceReport(window: ReportWindow = {}): Promise<CommerceArm[]> {
+    const list = (values: readonly string[]) => values.map((v) => `'${v}'`).join(",");
+    const j = (key: string) => `json_extract(o.data, '$.${key}')`;
+    const canonical = (expr: string, values: readonly string[], fallback: string) =>
+      `CASE WHEN ${expr} IN (${list(values)}) THEN ${expr} ELSE '${fallback}' END`;
+    const bounds = (column: string) =>
+      `${window.since ? ` AND ${column} >= ?` : ""}${window.until ? ` AND ${column} < ?` : ""}`;
+    const values = [window.since, window.until].filter((v): v is string => Boolean(v));
+    const base =
+      `WITH o AS (SELECT * FROM orders WHERE experiment_id IN (${list(EXPERIMENTS.map((e) => e.id))})${bounds("created_at")}), facts AS (` +
+      `SELECT experiment_id, ${j("payment_status")} IN ('paid','refunded') AS paid, ` +
+      `MAX(0, ${j("quote.total_cents")} - COALESCE(${j("refunded_amount_cents")}, CASE WHEN ${j("payment_status")} = 'refunded' THEN ${j("quote.total_cents")} ELSE 0 END)) AS revenue, ` +
+      `${j("number_of_knives")} AS knives, COALESCE(${j("is_repeat_customer")},0) AS repeat_customer, COALESCE(${j("actual_repeat_purchase")},0) AS repeat_purchase, ` +
+      `${canonical(j("repeat_intent"), ["yes", "maybe", "no", "unknown"], "unknown")} AS repeat_intent, ${j("time_to_fulfill_hours")} AS hours, ` +
+      `${canonical(j("source"), ANALYTICS_SOURCES, "other")} AS source, ${canonical(j("acquisition_channel"), ACQUISITION_CHANNELS, "other")} AS channel, ` +
+      `(SELECT e.data FROM analytics_events e WHERE json_extract(e.data,'$.visitor_id') = ${j("visitor_id")} ` +
+      `AND e.experiment_id = o.experiment_id AND json_extract(e.data,'$.name') = 'page_view' ` +
+      `AND e.expires_at > CAST(strftime('%s','now') AS INTEGER) AND e.created_at <= o.created_at${bounds("e.created_at")} ` +
+      `ORDER BY e.created_at, e.id LIMIT 1) AS profile FROM o) `;
+    const all = async <T>(sql: string) =>
+      (
+        await this.db
+          .prepare(base + sql)
+          .bind(...values, ...values)
+          .all<T>()
+      ).results;
+    const [totals, intents, segments, waitlist] = await Promise.all([
+      all<Record<string, string | number>>(
+        "SELECT experiment_id, COUNT(*) AS orders_created, SUM(paid) AS orders_paid, SUM(paid * revenue) AS revenue_cents, SUM(paid * knives) AS knives, SUM(paid * repeat_customer) AS repeat_customers, SUM(paid * repeat_purchase) AS repeat_purchases, SUM(CASE WHEN paid THEN COALESCE(hours,0) ELSE 0 END) AS fulfill_hours, SUM(paid AND hours IS NOT NULL) AS fulfilled FROM facts GROUP BY experiment_id",
+      ),
+      all<{ experiment_id: string; value: string; count: number }>(
+        "SELECT experiment_id, repeat_intent AS value, COUNT(*) AS count FROM facts WHERE paid GROUP BY experiment_id, repeat_intent",
+      ),
+      all<{
+        experiment_id: string;
+        source: string;
+        channel: string;
+        device: string;
+        viewport: string;
+        paid: number;
+        revenue_cents: number;
+      }>(
+        `SELECT experiment_id, source, channel, ${canonical("json_extract(profile,'$.device')", DEVICE_CLASSES, "unknown")} AS device, ` +
+          `${canonical("json_extract(profile,'$.viewport')", VIEWPORT_BANDS, "unknown")} AS viewport, COUNT(*) AS paid, SUM(revenue) AS revenue_cents FROM facts WHERE paid GROUP BY experiment_id, source, channel, device, viewport`,
+      ),
+      this.db
+        .prepare(
+          `SELECT json_extract(data, '$.experiment_id') AS experiment_id, COUNT(*) AS count FROM waitlist WHERE json_extract(data, '$.experiment_id') IN (${list(EXPERIMENTS.map((e) => e.id))})${bounds("created_at")} GROUP BY experiment_id`,
+        )
+        .bind(...values)
+        .all<{ experiment_id: string; count: number }>(),
+    ]);
+    const add = (counts: Record<string, number>, key: string, count: number) => {
+      counts[key] = (counts[key] ?? 0) + Number(count);
+    };
+    return EXPERIMENTS.map((exp) => {
+      const arm = emptyCommerce(exp.id);
+      const total = totals.find((t) => t.experiment_id === exp.id);
+      if (total)
+        for (const key of [
+          "orders_created",
+          "orders_paid",
+          "revenue_cents",
+          "knives",
+          "repeat_customers",
+          "repeat_purchases",
+          "fulfill_hours",
+          "fulfilled",
+        ] as const)
+          arm[key] = Number(total[key] ?? 0);
+      arm.waitlist_signups = Number(
+        waitlist.results.find((w) => w.experiment_id === exp.id)?.count ?? 0,
+      );
+      for (const row of intents.filter((i) => i.experiment_id === exp.id))
+        arm.repeat_intent[row.value] = Number(row.count);
+      for (const row of segments.filter((s) => s.experiment_id === exp.id)) {
+        const b = (arm.by_channel[row.channel] ??= { paid: 0, revenue_cents: 0 });
+        b.paid += Number(row.paid);
+        b.revenue_cents += Number(row.revenue_cents);
+        add(arm.by_source, row.source, row.paid);
+        add(arm.by_device, row.device, row.paid);
+        add(arm.by_viewport, row.viewport, row.paid);
+      }
+      return arm;
+    });
+  }
+
   /** Device and viewport for the given visitors' page views (bounded IN lists). */
-  async visitorProfiles(visitorIds: string[]): Promise<VisitorProfile[]> {
+  async visitorProfiles(
+    visitorIds: string[],
+    window: ReportWindow = {},
+  ): Promise<VisitorProfile[]> {
     const out: VisitorProfile[] = [];
     for (let i = 0; i < visitorIds.length; i += PROFILE_CHUNK) {
       const chunk = visitorIds.slice(i, i + PROFILE_CHUNK);
+      const bounds = `${window.since ? " AND created_at >= ?" : ""}${window.until ? " AND created_at < ?" : ""}`;
       const rows = await this.db
         .prepare(
-          "SELECT json_extract(data, '$.visitor_id') AS visitor_id, " +
-            "COALESCE(MAX(json_extract(data, '$.device')), 'unknown') AS device, " +
-            "COALESCE(MAX(json_extract(data, '$.viewport')), 'unknown') AS viewport " +
-            "FROM analytics_events WHERE json_extract(data, '$.visitor_id') IN (" +
-            chunk.map(() => "?").join(", ") +
-            ") AND json_extract(data, '$.name') = 'page_view' " +
-            "AND expires_at > CAST(strftime('%s', 'now') AS INTEGER) " +
-            "GROUP BY json_extract(data, '$.visitor_id')",
+          "WITH ranked AS (SELECT json_extract(data,'$.visitor_id') AS visitor_id, " +
+            "COALESCE(json_extract(data,'$.device'),'unknown') AS device, COALESCE(json_extract(data,'$.viewport'),'unknown') AS viewport, " +
+            "ROW_NUMBER() OVER (PARTITION BY json_extract(data,'$.visitor_id') ORDER BY created_at, id) AS rn " +
+            "FROM analytics_events WHERE json_extract(data,'$.visitor_id') IN (" +
+            chunk.map(() => "?").join(",") +
+            ") AND json_extract(data,'$.name') = 'page_view' AND expires_at > CAST(strftime('%s','now') AS INTEGER)" +
+            bounds +
+            ") SELECT visitor_id, device, viewport FROM ranked WHERE rn = 1",
         )
-        .bind(...chunk)
+        .bind(...chunk, ...[window.since, window.until].filter((v): v is string => Boolean(v)))
         .all<VisitorProfile>();
       out.push(...rows.results);
     }

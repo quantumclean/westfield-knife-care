@@ -28,7 +28,7 @@ export const validOrder = {
   experiment_id: "experiment-001",
   source: "flyer-v1-qr",
   acquisition_channel: "print",
-  visitor_id: "visitor-00000001",
+  visitor_id: "00000000-0000-4000-8000-000000000001",
   customer: {
     name: "Ada Lovelace",
     email: "ada@example.com",

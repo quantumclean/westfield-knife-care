@@ -14,6 +14,9 @@ import { CADENCES, SERVICE_INTERESTS } from "./types.ts";
  */
 export const ANALYTICS_SCHEMA_VERSION = 2;
 
+export const VISITOR_ID_PATTERN =
+  /^(?:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|v-[a-z0-9]{8}-[a-z0-9]{8})$/i;
+
 /** Raw first-party events are deleted this many days after they are recorded. */
 export const EVENT_RETENTION_DAYS = 90;
 
@@ -103,15 +106,37 @@ export function viewportBand(width: number): ViewportBand {
 }
 
 /**
- * The acquisition source as analytics may keep it. Flyer and campaign tags pass through;
- * anything that could identify a person (a long digit run such as a phone number, an
- * over-long tag) becomes "other".
+ * Only reviewed source ids may enter analytics. Every unregistered value becomes "other",
+ * including plausible names, street labels and short ZIP codes.
  */
+/** Registered non-personal placement ids. Add new campaigns here before using them. */
+export const ANALYTICS_SOURCES = [
+  "direct",
+  "other",
+  "flyer-a",
+  "flyer-b",
+  "flyer-v1-qr",
+  "flyer-qr",
+  "instagram",
+  "facebook",
+  "nextdoor",
+  "google",
+  "bing",
+  "duckduckgo",
+  "google.com",
+  "www.google.com",
+  "bing.com",
+  "duckduckgo.com",
+  "nextdoor-post-1",
+  "friend",
+  "ig-story-3",
+  "poster-coop",
+] as const;
+
 export function analyticsSource(source: string | null | undefined): string {
+  if (!source) return "direct";
   const cleaned = normaliseSource(source);
-  if (!cleaned) return "direct";
-  if (cleaned.length > 40 || /\d{7,}/.test(cleaned)) return "other";
-  return cleaned;
+  return cleaned && (ANALYTICS_SOURCES as readonly string[]).includes(cleaned) ? cleaned : "other";
 }
 
 // ---------------------------------------------------------------------------

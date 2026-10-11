@@ -22,6 +22,7 @@ const DEFAULTS: PrivacyChoices = { v: 1, measurement: "on", google: "denied" };
 const DEVICE_KEYS = ["wkc.visitor_id", "wkc.attribution", "wkc.analytics_key"] as const;
 const DELETION_KEY = "wkc.analytics_key";
 export const PRIVACY_CHANGED = "wkc:privacy-changed";
+export const DEVICE_FORGOTTEN = "wkc:device-forgotten";
 
 /** Used when localStorage is unavailable, so an opt-out still holds for this page. */
 let memory: PrivacyChoices | undefined;
@@ -75,7 +76,10 @@ export function measurementAllowed(): boolean {
 }
 
 export function googleConfigured(): boolean {
-  return Boolean(import.meta.env.VITE_GA4_MEASUREMENT_ID);
+  return (
+    Boolean(import.meta.env.VITE_GA4_MEASUREMENT_ID) &&
+    import.meta.env.VITE_GA4_MANUAL_EVENTS_ONLY === "true"
+  );
 }
 
 /** Google Analytics may run: configured, opted in, measuring at all, and no browser signal. */
@@ -130,9 +134,11 @@ export async function deviceOwnerHash(): Promise<string | undefined> {
 /**
  * "Delete my analytics data": ask the API to erase this browser's events (proving ownership
  * with the deletion key), forget this browser's ids and key, and stop measuring on this device.
- * Returns false if the API could not be reached (the local part still happens).
+ * Returns false if owned deletion cannot be confirmed; counting stops immediately and
+ * the proof is retained for retry. Missing proof never counts as successful deletion.
  */
 export async function forgetThisDevice(visitorId: string): Promise<boolean> {
+  saveChoices({ measurement: "off", google: "denied" });
   let erased = false;
   const key = (() => {
     try {
@@ -150,11 +156,13 @@ export async function forgetThisDevice(visitorId: string): Promise<boolean> {
       });
       erased = res.status === 204;
     } else {
-      erased = true; // nothing was ever sent with an owner, so there is nothing to erase
+      erased = false; // Legacy/unowned records cannot be proven or erased from this browser.
     }
   } catch {
     erased = false;
   }
+  saveChoices({ measurement: "off", google: "denied" });
+  if (!erased) return false; // Keep the proof so a failed request can be retried.
   pageKey = undefined;
   for (const key of DEVICE_KEYS) {
     try {
@@ -163,6 +171,6 @@ export async function forgetThisDevice(visitorId: string): Promise<boolean> {
       // ignore
     }
   }
-  saveChoices({ measurement: "off", google: "denied" });
+  window.dispatchEvent(new CustomEvent(DEVICE_FORGOTTEN));
   return erased;
 }

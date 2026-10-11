@@ -5,8 +5,15 @@ import {
   GetCommand,
   PutCommand,
   QueryCommand,
+  TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
-import type { AnalyticsEvent, Order, WaitlistEntry } from "@wkc/shared";
+import {
+  MAX_EVENTS_PER_VIEW,
+  type AnalyticsEvent,
+  type Order,
+  type WaitlistEntry,
+} from "@wkc/shared";
+import { commerceFromRecords, type CommerceArm } from "./commerce-report.ts";
 import {
   profilesFromEvents,
   reportFromEvents,
@@ -111,26 +118,71 @@ export class DynamoRepository implements Repository {
 
   async putEvents(events: AnalyticsEvent[]): Promise<void> {
     for (const event of events) {
+      const owner = event.owner ?? "";
+      const view =
+        event.view_id === "legacy-v1" ? `legacy-${event.visitor_id}` : (event.view_id ?? event.id);
       await this.doc
         .send(
-          new PutCommand({
-            TableName: this.tableName,
-            Item: {
-              pk: `EVENT#${event.id}`,
-              sk: "EVENT",
-              gsi1pk: `VISITOR#${event.visitor_id}`,
-              gsi1sk: event.created_at,
-              gsi2pk: "ENTITY#event",
-              gsi2sk: event.created_at,
-              entity: "event",
-              expires_at: eventExpiresAt(event.created_at),
-              data: event,
-            },
-            ConditionExpression: "attribute_not_exists(pk)",
+          new TransactWriteCommand({
+            TransactItems: [
+              {
+                ConditionCheck: {
+                  TableName: this.tableName,
+                  Key: { pk: `DELETE#${event.visitor_id}#${owner}`, sk: "DELETE" },
+                  ConditionExpression: "attribute_not_exists(pk)",
+                },
+              },
+              {
+                Update: {
+                  TableName: this.tableName,
+                  Key: { pk: `VIEW#${view}`, sk: "VIEW" },
+                  UpdateExpression:
+                    "SET hits = if_not_exists(hits, :zero) + :one, visitor_id = :vid, #owner = :owner, exp = :exp, #source = :source, channel = :channel, page = :page, expires_at = :expiry",
+                  ConditionExpression:
+                    "attribute_not_exists(pk) OR (hits < :limit AND visitor_id = :vid AND #owner = :owner AND exp = :exp AND #source = :source AND channel = :channel AND page = :page)",
+                  ExpressionAttributeNames: { "#owner": "owner", "#source": "source" },
+                  ExpressionAttributeValues: {
+                    ":zero": 0,
+                    ":one": 1,
+                    ":limit": MAX_EVENTS_PER_VIEW,
+                    ":vid": event.visitor_id,
+                    ":owner": owner,
+                    ":exp": event.experiment_id,
+                    ":source": event.source,
+                    ":channel": event.acquisition_channel,
+                    ":page": event.page,
+                    ":expiry": eventExpiresAt(event.created_at),
+                  },
+                },
+              },
+              {
+                Put: {
+                  TableName: this.tableName,
+                  Item: {
+                    pk: `EVENT#${event.id}`,
+                    sk: "EVENT",
+                    gsi1pk: `VISITOR#${event.visitor_id}`,
+                    gsi1sk: event.created_at,
+                    gsi2pk: "ENTITY#event",
+                    gsi2sk: event.created_at,
+                    entity: "event",
+                    expires_at: eventExpiresAt(event.created_at),
+                    data: event,
+                  },
+                  ConditionExpression: "attribute_not_exists(pk)",
+                },
+              },
+            ],
           }),
         )
         .catch((error: unknown) => {
-          if ((error as { name?: string }).name !== "ConditionalCheckFailedException") throw error;
+          const failure = error as { name?: string; CancellationReasons?: { Code?: string }[] };
+          // Idempotent retries, full views and deletion tombstones skip events; real store errors propagate.
+          if (
+            failure.name !== "TransactionCanceledException" ||
+            !failure.CancellationReasons?.some((r) => r.Code === "ConditionalCheckFailed")
+          )
+            throw error;
         });
     }
   }
@@ -150,23 +202,34 @@ export class DynamoRepository implements Repository {
   }
 
   async deleteVisitorEvents(visitorId: string, ownerHash: string): Promise<number> {
-    const result = await this.doc.send(
-      new QueryCommand({
-        TableName: this.tableName,
-        IndexName: "gsi1",
-        KeyConditionExpression: "gsi1pk = :pk",
-        ExpressionAttributeValues: { ":pk": `VISITOR#${visitorId}` },
-      }),
-    );
-    const items = (result.Items ?? []).filter(
-      (item) => (item.data as AnalyticsEvent | undefined)?.owner === ownerHash,
-    );
-    for (const item of items) {
-      await this.doc.send(
-        new DeleteCommand({ TableName: this.tableName, Key: { pk: item.pk, sk: item.sk } }),
+    // Publish the tombstone before scanning. Transactional ingestion cannot race past it.
+    await this.put({
+      pk: `DELETE#${visitorId}#${ownerHash}`,
+      sk: "DELETE",
+      expires_at: Math.floor(Date.now() / 1000) + 90 * 86400,
+    });
+    let startKey: Item | undefined;
+    let removed = 0;
+    do {
+      const result = await this.doc.send(
+        new QueryCommand({
+          TableName: this.tableName,
+          IndexName: "gsi1",
+          KeyConditionExpression: "gsi1pk = :pk",
+          ExpressionAttributeValues: { ":pk": `VISITOR#${visitorId}` },
+          ExclusiveStartKey: startKey,
+        }),
       );
-    }
-    return items.length;
+      for (const item of result.Items ?? []) {
+        if ((item.data as AnalyticsEvent | undefined)?.owner !== ownerHash) continue;
+        await this.doc.send(
+          new DeleteCommand({ TableName: this.tableName, Key: { pk: item.pk, sk: item.sk } }),
+        );
+        removed++;
+      }
+      startKey = result.LastEvaluatedKey;
+    } while (startKey);
+    return removed;
   }
 
   /** Legacy AWS build: aggregates in the Lambda from a full listing (not used on Cloudflare). */
@@ -178,10 +241,33 @@ export class DynamoRepository implements Repository {
     return reportFromEvents(events);
   }
 
-  async visitorProfiles(visitorIds: string[]): Promise<VisitorProfile[]> {
+  async commerceReport(window: ReportWindow = {}): Promise<CommerceArm[]> {
+    const [orders, waitlist, events] = await Promise.all([
+      this.listOrders(),
+      this.listWaitlist(),
+      this.queryEntity("event", undefined, window.since),
+    ]);
+    return commerceFromRecords(
+      orders,
+      waitlist,
+      events.map((i) => i.data as AnalyticsEvent),
+      window,
+    );
+  }
+
+  async visitorProfiles(
+    visitorIds: string[],
+    window: ReportWindow = {},
+  ): Promise<VisitorProfile[]> {
     const items = await this.queryEntity("event");
     return profilesFromEvents(
-      items.map((i) => i.data as AnalyticsEvent),
+      items
+        .map((i) => i.data as AnalyticsEvent)
+        .filter(
+          (e) =>
+            (!window.since || e.created_at >= window.since) &&
+            (!window.until || e.created_at < window.until),
+        ),
       visitorIds,
     );
   }

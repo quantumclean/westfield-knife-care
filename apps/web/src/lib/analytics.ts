@@ -18,6 +18,7 @@ import {
 import { API_BASE, setApiFailureReporter } from "./api.ts";
 import {
   PRIVACY_CHANGED,
+  DEVICE_FORGOTTEN,
   PRIVACY_KEY,
   deviceOwnerHash,
   googleAllowed,
@@ -25,7 +26,7 @@ import {
 } from "./consent.ts";
 import { startHealthReporting } from "./health.ts";
 import { sanitizePageUrl, sanitizeReferrer } from "./privacy-url.ts";
-import type { Session } from "./session.ts";
+import { loadSession, storedVisitorId, type Session } from "./session.ts";
 
 /**
  * Privacy-conscious analytics (schema v2, docs/analytics-events.md).
@@ -83,6 +84,7 @@ interface ViewState {
 }
 
 let state: ViewState | undefined;
+let consentGeneration = 0;
 /** Hash of this browser's deletion key, attached to every event at send time. */
 let owner: Promise<string | undefined> = Promise.resolve(undefined);
 
@@ -144,6 +146,17 @@ export function initAnalytics(current: Session): void {
       if (document.visibilityState === "hidden") flush();
     });
     window.addEventListener(PRIVACY_CHANGED, applyPrivacyChoices);
+    window.addEventListener(DEVICE_FORGOTTEN, () => {
+      if (!state) return;
+      // Mutate the shared session too: booking context must not retain the forgotten identity.
+      Object.assign(state.session, loadSession());
+      owner = deviceOwnerHash();
+      state.viewId = newId();
+      state.once.clear();
+      state.perName.clear();
+      state.sent = 0;
+      state.paused = false;
+    });
     // A choice made in another tab applies here at once, too.
     window.addEventListener("storage", (event: Event) => {
       const key = (event as StorageEvent).key;
@@ -169,7 +182,21 @@ export function initAnalytics(current: Session): void {
  */
 export function applyPrivacyChoices(): void {
   if (!state) return;
-  if (!measurementAllowed()) state.queue.length = 0;
+  if (!measurementAllowed()) {
+    state.queue.length = 0;
+    consentGeneration += 1;
+  }
+  const storedId = storedVisitorId();
+  if (measurementAllowed() && storedId && storedId !== state.session.visitor_id) {
+    consentGeneration += 1;
+    Object.assign(state.session, loadSession());
+    owner = deviceOwnerHash();
+    state.viewId = newId();
+    state.once.clear();
+    state.perName.clear();
+    state.sent = 0;
+    state.paused = false;
+  }
   if (googleAllowed()) loadGoogle();
   else if (state.google === "loaded") stopGoogle();
 }
@@ -261,10 +288,11 @@ export function flush(): void {
 }
 
 function send(events: Envelope[]): void {
+  const generation = consentGeneration;
   void owner
     .then((hash) => {
       // A preference change between queueing and sending wins: nothing leaves after opt-out.
-      if (!measurementAllowed()) return undefined;
+      if (!hash || !measurementAllowed() || generation !== consentGeneration) return undefined;
       return fetch(`${API_BASE}/events`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -290,7 +318,7 @@ function send(events: Envelope[]): void {
 
 function sendToGoogle(name: EventName, props: EventProps): void {
   if (state?.google !== "loaded" || !googleAllowed() || !window.gtag) return;
-  if (routeId(window.location.pathname) === "/thanks") return;
+  if (isSensitiveScreen()) return;
   window.gtag("event", name, { ...props, page_location: safePageLocation() });
 }
 

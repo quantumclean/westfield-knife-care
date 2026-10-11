@@ -5,15 +5,10 @@ import {
   SCROLL_MILESTONES,
   SECTIONS,
   VIDEO_MILESTONES,
-  type Order,
 } from "@wkc/shared";
+import type { CommerceArm } from "../repo/commerce-report.ts";
 import type { Deps } from "../deps.ts";
-import type {
-  AnalyticsReport,
-  ReportWindow,
-  StepRow,
-  VisitorProfile,
-} from "../repo/analytics-report.ts";
+import type { AnalyticsReport, ReportWindow, StepRow } from "../repo/analytics-report.ts";
 
 /**
  * Aggregate UX insight per experiment arm, for the operator only (behind the admin key).
@@ -119,8 +114,6 @@ export interface Insights {
   notes: string[];
 }
 
-const isPaid = (o: Order) => o.payment_status === "paid" || o.payment_status === "refunded";
-
 const rate = (num: number, den: number, digits = 4) =>
   den > 0 ? Math.round((num / den) * 10 ** digits) / 10 ** digits : null;
 
@@ -218,22 +211,16 @@ function dropOffs(
 function armInsights(
   experiment: (typeof EXPERIMENTS)[number],
   report: AnalyticsReport,
-  orders: Order[],
-  profiles: Map<string, VisitorProfile>,
-  waitlistSignups: number,
+  commerce: CommerceArm,
   minCount: number,
 ): ArmInsights {
   const id = experiment.id;
   const rows = report.steps.filter((r) => r.experiment_id === id);
-  const armOrders = orders.filter((o) => o.experiment_id === id);
-  const paidOrders = armOrders.filter(isPaid);
-  const funnel = funnelOf(rows, paidOrders.length);
+  const funnel = funnelOf(rows, commerce.orders_paid);
   const visitors = funnel.visited;
-  const revenue = paidOrders.reduce((sum, o) => sum + netRevenueCents(o), 0);
-
-  const profileOf = (o: Order) => (o.visitor_id ? profiles.get(o.visitor_id) : undefined);
-  const paidByDevice = countBy(paidOrders.map((o) => profileOf(o)?.device ?? "unknown"));
-  const paidByViewport = countBy(paidOrders.map((o) => profileOf(o)?.viewport ?? "unknown"));
+  const revenue = commerce.revenue_cents;
+  const paidByDevice = commerce.by_device;
+  const paidByViewport = commerce.by_viewport;
 
   const prop = (name: string, key: string) =>
     Object.fromEntries(
@@ -304,20 +291,22 @@ function armInsights(
         typed >= minCount ? rate(sum("details_typed_submitted"), typed) : null,
     },
     outcomes: {
-      orders_created: armOrders.length,
-      orders_paid: paidOrders.length,
+      orders_created: commerce.orders_created,
+      orders_paid: commerce.orders_paid,
       revenue_cents: revenue,
-      paid_per_visitor: rate(paidOrders.length, visitors),
+      paid_per_visitor: rate(commerce.orders_paid, visitors),
       revenue_per_visitor_cents: visitors ? Math.round(revenue / visitors) : null,
-      waitlist_signups: waitlistSignups,
+      waitlist_signups: commerce.waitlist_signups,
     },
     by_channel: segmentRows(
       rows,
       "channel",
-      countBy(paidOrders.map((o) => o.acquisition_channel)),
+      Object.fromEntries(
+        Object.entries(commerce.by_channel).map(([key, value]) => [key, value.paid]),
+      ),
       minCount,
     ),
-    by_source: segmentRows(rows, "source", countBy(paidOrders.map((o) => o.source)), minCount),
+    by_source: segmentRows(rows, "source", commerce.by_source, minCount),
     by_device: segmentRows(rows, "device", paidByDevice, minCount),
     by_viewport: segmentRows(rows, "viewport", paidByViewport, minCount),
     health: {
@@ -329,33 +318,15 @@ function armInsights(
   };
 }
 
-/** Net receipts account for Stripe's cumulative partial or full refunds. */
-function netRevenueCents(order: Order): number {
-  const refunded =
-    order.refunded_amount_cents ??
-    (order.payment_status === "refunded" ? order.quote.total_cents : 0);
-  return Math.max(0, order.quote.total_cents - refunded);
-}
-
 export async function buildInsights(
   deps: Deps,
   window: ReportWindow,
   minCount: number = MIN_REPORT_COUNT,
 ): Promise<Insights> {
-  const inWindow = (at: string) =>
-    (!window.since || at >= window.since) && (!window.until || at < window.until);
-  const [orders, waitlist, report] = await Promise.all([
-    deps.repo.listOrders(),
-    deps.repo.listWaitlist(),
+  const [commerce, report] = await Promise.all([
+    deps.repo.commerceReport(window),
     deps.repo.analyticsReport(window),
   ]);
-  const windowOrders = orders.filter((o) => inWindow(o.created_at));
-  const paidVisitors = [
-    ...new Set(windowOrders.filter(isPaid).flatMap((o) => (o.visitor_id ? [o.visitor_id] : []))),
-  ];
-  const profiles = new Map(
-    (await deps.repo.visitorProfiles(paidVisitors)).map((p) => [p.visitor_id, p]),
-  );
 
   return {
     generated_at: deps.now().toISOString(),
@@ -367,16 +338,15 @@ export async function buildInsights(
       armInsights(
         experiment,
         report,
-        windowOrders,
-        profiles,
-        waitlist.filter((w) => w.experiment_id === experiment.id && inWindow(w.created_at)).length,
+        commerce.find((a) => a.experiment_id === experiment.id)!,
         minCount,
       ),
     ),
     notes: [
-      "Visitors are unique random browser ids; one person on two devices counts twice.",
+      "Browser telemetry is untrusted: bots can fabricate ids and steps. Visitor, UX and conversion estimates are not verified people or a strictly ordered cohort funnel.",
+      "Visitors are unique random browser ids; one person on two devices counts twice. Orders can exceed visitors when counting is disabled or events expire.",
       "Paid orders and revenue come from Stripe-confirmed orders, never from browser events.",
-      "Paid by device or viewport joins an order to the device its browser's page views reported; orders without a matching browser id show as unknown.",
+      "Paid device/viewport use the first retained page view in the same report window and arm, no later than order creation. Unknown includes missing, opted-out and expired telemetry.",
       `Breakdown rows under ${minCount} visitors are suppressed (null).`,
       "Events are kept for 90 days; compare arms over the same window.",
     ],

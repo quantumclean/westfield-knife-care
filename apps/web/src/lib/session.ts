@@ -1,5 +1,7 @@
 import {
   deriveAttribution,
+  analyticsSource,
+  VISITOR_ID_PATTERN,
   resolveExperimentOrDefault,
   resolveFlyerRoute,
   selectExperiment,
@@ -58,7 +60,9 @@ export function loadSession(
   // so reading the path here is all that's needed to detect it.
   const flyerRoute = resolveFlyerRoute(location.pathname);
 
-  const visitor_id = read(KEYS.visitor) ?? newVisitorId();
+  const storedVisitor = read(KEYS.visitor);
+  const visitor_id =
+    storedVisitor && VISITOR_ID_PATTERN.test(storedVisitor) ? storedVisitor : newVisitorId();
   write(KEYS.visitor, visitor_id);
 
   const chosen = selectExperiment({
@@ -103,7 +107,7 @@ export function storedVisitorId(): string | null {
 export function sessionContext(session: Session) {
   return {
     experiment_id: session.experiment.experiment.id,
-    source: session.attribution.source,
+    source: analyticsSource(session.attribution.source),
     acquisition_channel: session.attribution.acquisition_channel,
     visitor_id: session.visitor_id,
   };

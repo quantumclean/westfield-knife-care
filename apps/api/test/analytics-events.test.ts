@@ -13,12 +13,13 @@ const uuid = () => `00000000-0000-4000-8000-${String(++seq).padStart(12, "0")}`;
 function event(name: string, props: Record<string, unknown> = {}, overrides = {}) {
   return {
     v: 2,
+    owner: "f".repeat(64),
     event_id: uuid(),
     view_id: "11111111-2222-4333-8444-555555555555",
     experiment_id: "experiment-001",
     source: "flyer-a",
     acquisition_channel: "print",
-    visitor_id: "visitor-0000000a",
+    visitor_id: "00000000-0000-4000-8000-00000000000a",
     route: "/a",
     device: "mobile",
     viewport: "xs",
@@ -54,6 +55,7 @@ describe("POST /api/events (schema v2)", () => {
       device: "mobile",
       viewport: "xs",
       v: 2,
+      owner: "f".repeat(64),
       props: {},
     });
   });
@@ -66,7 +68,7 @@ describe("POST /api/events (schema v2)", () => {
         event("form_error", { form: "booking", fields: value }),
         event("cta_click", { cta: "sharpen", location: "hero", note: value }),
         { ...event("page_view"), page_location: `https://x.test/?q=${value}` },
-        { ...event("page_view"), visitor_id: "visitor-0000000a", email: value },
+        { ...event("page_view"), visitor_id: "00000000-0000-4000-8000-00000000000a", email: value },
       ]) {
         const res = await app.request("/api/events", json("POST", { events: [body] }));
         expect(res.status).toBe(400);
@@ -107,7 +109,7 @@ describe("POST /api/events (schema v2)", () => {
       "/api/events",
       json("POST", {
         experiment_id: "experiment-002",
-        visitor_id: "visitor-0000000b",
+        visitor_id: "00000000-0000-4000-8000-00000000000b",
         name: "checkout_started",
         page: "/b",
         props: { order_id: "order-abc-123", total_cents: 4900 },
@@ -150,22 +152,17 @@ describe("POST /api/events/forget (proof of possession)", () => {
   async function seed(app: ReturnType<typeof makeDeps>["app"]) {
     const victim = await ownerHashOf(VICTIM_KEY);
     const attacker = await ownerHashOf(ATTACKER_KEY);
-    await app.request(
-      "/api/events",
-      json("POST", {
-        events: [
-          event("page_view", {}, { owner: victim }),
-          event("cta_click", { cta: "sharpen", location: "hero" }, { owner: victim }),
-          // Someone who learned the victim's visitor id plants events under their own key.
-          event("page_view", {}, { owner: attacker, view_id: uuid() }),
-          event(
-            "page_view",
-            {},
-            { visitor_id: "visitor-0000000z", owner: victim, view_id: uuid() },
-          ),
-        ],
-      }),
-    );
+    for (const body of [
+      event("page_view", {}, { owner: victim }),
+      event("cta_click", { cta: "sharpen", location: "hero" }, { owner: victim }),
+      event("page_view", {}, { owner: attacker, view_id: uuid() }),
+      event(
+        "page_view",
+        {},
+        { visitor_id: "00000000-0000-4000-8000-00000000000f", owner: victim, view_id: uuid() },
+      ),
+    ])
+      expect((await app.request("/api/events", json("POST", body))).status).toBe(204);
     return { victim, attacker };
   }
 
@@ -174,14 +171,14 @@ describe("POST /api/events/forget (proof of possession)", () => {
     const { victim, attacker } = await seed(app);
     const res = await app.request(
       "/api/events/forget",
-      json("POST", { visitor_id: "visitor-0000000a", key: VICTIM_KEY }),
+      json("POST", { visitor_id: "00000000-0000-4000-8000-00000000000a", key: VICTIM_KEY }),
     );
     expect(res.status).toBe(204);
     const left = await deps.repo.listEvents();
     expect(left.map((e) => [e.visitor_id, e.owner])).toEqual(
       expect.arrayContaining([
-        ["visitor-0000000a", attacker],
-        ["visitor-0000000z", victim],
+        ["00000000-0000-4000-8000-00000000000a", attacker],
+        ["00000000-0000-4000-8000-00000000000f", victim],
       ]),
     );
     expect(left).toHaveLength(2);
@@ -192,7 +189,7 @@ describe("POST /api/events/forget (proof of possession)", () => {
     await seed(app);
     const res = await app.request(
       "/api/events/forget",
-      json("POST", { visitor_id: "visitor-0000000a" }),
+      json("POST", { visitor_id: "00000000-0000-4000-8000-00000000000a" }),
     );
     expect(res.status).toBe(400);
     expect(await deps.repo.listEvents()).toHaveLength(4);
@@ -203,14 +200,14 @@ describe("POST /api/events/forget (proof of possession)", () => {
     const { victim } = await seed(app);
     const res = await app.request(
       "/api/events/forget",
-      json("POST", { visitor_id: "visitor-0000000a", key: ATTACKER_KEY }),
+      json("POST", { visitor_id: "00000000-0000-4000-8000-00000000000a", key: ATTACKER_KEY }),
     );
     expect(res.status).toBe(204);
     const left = await deps.repo.listEvents();
     expect(left.filter((e) => e.owner === victim)).toHaveLength(3);
     const wrong = await app.request(
       "/api/events/forget",
-      json("POST", { visitor_id: "visitor-0000000a", key: "x".repeat(43) }),
+      json("POST", { visitor_id: "00000000-0000-4000-8000-00000000000a", key: "x".repeat(43) }),
     );
     expect(wrong.status).toBe(204);
   });
@@ -218,8 +215,12 @@ describe("POST /api/events/forget (proof of possession)", () => {
   it("rejects malformed keys and extra fields", async () => {
     const { app } = makeDeps();
     for (const body of [
-      { visitor_id: "visitor-0000000a", key: "short" },
-      { visitor_id: "visitor-0000000a", key: "v".repeat(43), email: "ada@example.com" },
+      { visitor_id: "00000000-0000-4000-8000-00000000000a", key: "short" },
+      {
+        visitor_id: "00000000-0000-4000-8000-00000000000a",
+        key: "v".repeat(43),
+        email: "ada@example.com",
+      },
     ]) {
       expect((await app.request("/api/events/forget", json("POST", body))).status).toBe(400);
     }
@@ -241,7 +242,7 @@ describe("D1 analytics storage (SQLite with the real migrations)", () => {
   const stored = (
     id: string,
     created_at: string,
-    visitor = "visitor-0000000a",
+    visitor = "00000000-0000-4000-8000-00000000000a",
   ): AnalyticsEvent => ({
     id,
     created_at,
@@ -319,11 +320,11 @@ describe("D1 analytics storage (SQLite with the real migrations)", () => {
     const owner = "f".repeat(64);
     await repo.putEvents([
       { ...stored("ev-1", now), owner },
-      { ...stored("ev-2", now, "visitor-0000000z"), owner },
+      { ...stored("ev-2", now, "00000000-0000-4000-8000-00000000000f"), owner },
       { ...stored("ev-3", now), owner: "0".repeat(64) },
       stored("ev-4", now),
     ]);
-    expect(await repo.deleteVisitorEvents("visitor-0000000a", owner)).toBe(1);
+    expect(await repo.deleteVisitorEvents("00000000-0000-4000-8000-00000000000a", owner)).toBe(1);
     expect((await repo.listEvents()).map((e) => e.id).sort()).toEqual(["ev-2", "ev-3", "ev-4"]);
   });
 
@@ -355,7 +356,10 @@ describe("Pages protection for the forget endpoint", () => {
         new Request("https://preview.example.test/api/events/forget", {
           method: "POST",
           headers: { "content-type": "application/json", "CF-Connecting-IP": "192.0.2.1" },
-          body: JSON.stringify({ visitor_id: "visitor-0000000a", key: "v".repeat(43) }),
+          body: JSON.stringify({
+            visitor_id: "00000000-0000-4000-8000-00000000000a",
+            key: "v".repeat(43),
+          }),
         }),
         env,
       );

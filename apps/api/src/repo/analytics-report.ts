@@ -1,4 +1,14 @@
-import { CATALOG, ERROR_KINDS, FORM_FIELDS, type AnalyticsEvent } from "@wkc/shared";
+import {
+  analyticsSource,
+  EXPERIMENTS,
+  DEVICE_CLASSES,
+  VIEWPORT_BANDS,
+  isAcquisitionChannel,
+  CATALOG,
+  ERROR_KINDS,
+  FORM_FIELDS,
+  type AnalyticsEvent,
+} from "@wkc/shared";
 
 /**
  * Aggregates the reports need, computed where the events live. D1 answers these with a few
@@ -119,6 +129,18 @@ export function isEngaging(e: Pick<AnalyticsEvent, "name" | "props">): boolean {
 
 /** Reference implementation (memory repository, tests). Same semantics as the D1 SQL. */
 export function reportFromEvents(events: AnalyticsEvent[]): AnalyticsReport {
+  events = events.map((e) => ({
+    ...e,
+    experiment_id: EXPERIMENTS.some((exp) => exp.id === e.experiment_id)
+      ? e.experiment_id
+      : "unknown",
+    source: analyticsSource(e.source),
+    acquisition_channel: isAcquisitionChannel(e.acquisition_channel)
+      ? e.acquisition_channel
+      : "other",
+    device: (DEVICE_CLASSES as readonly string[]).includes(e.device!) ? e.device : "unknown",
+    viewport: (VIEWPORT_BANDS as readonly string[]).includes(e.viewport!) ? e.viewport : "unknown",
+  }));
   // Duplicates.
   let onceRows = 0;
   const onceKeys = new Set<string>();
@@ -131,34 +153,23 @@ export function reportFromEvents(events: AnalyticsEvent[]): AnalyticsReport {
   // Per visitor, per arm.
   interface Facts {
     experiment_id: string;
-    pvDevice?: string;
-    anyDevice?: string;
-    pvViewport?: string;
-    anyViewport?: string;
-    pvChannel?: string;
-    anyChannel?: string;
-    pvSource?: string;
-    anySource?: string;
+    first?: AnalyticsEvent;
     flags: Set<string>;
   }
   const visitors = new Map<string, Facts>();
-  const maxStr = (a: string | undefined, b: string | undefined) =>
-    a === undefined ? b : b === undefined ? a : a > b ? a : b;
   for (const e of events) {
     const key = `${e.experiment_id}\u0000${e.visitor_id}`;
     const f = visitors.get(key) ?? { experiment_id: e.experiment_id, flags: new Set<string>() };
     visitors.set(key, f);
-    if (e.name === "page_view") {
-      f.pvDevice = maxStr(f.pvDevice, e.device);
-      f.pvViewport = maxStr(f.pvViewport, e.viewport);
-      f.pvChannel = maxStr(f.pvChannel, e.acquisition_channel);
-      f.pvSource = maxStr(f.pvSource, e.source);
-      f.flags.add("visited");
-    }
-    f.anyDevice = maxStr(f.anyDevice, e.device);
-    f.anyViewport = maxStr(f.anyViewport, e.viewport);
-    f.anyChannel = maxStr(f.anyChannel, e.acquisition_channel);
-    f.anySource = maxStr(f.anySource, e.source);
+    const before = (a: AnalyticsEvent, b: AnalyticsEvent) =>
+      a.created_at < b.created_at || (a.created_at === b.created_at && a.id < b.id);
+    if (
+      !f.first ||
+      (e.name === "page_view" && f.first.name !== "page_view") ||
+      ((e.name === "page_view") === (f.first.name === "page_view") && before(e, f.first))
+    )
+      f.first = e;
+    if (e.name === "page_view") f.flags.add("visited");
     if (isEngaging(e)) f.flags.add("engaged");
     if (e.name === "cta_click") f.flags.add("cta");
     if (e.name === "booking_opened") f.flags.add("opened");
@@ -169,10 +180,10 @@ export function reportFromEvents(events: AnalyticsEvent[]): AnalyticsReport {
   }
   const steps = new Map<string, StepRow>();
   for (const f of visitors.values()) {
-    const device = f.pvDevice ?? f.anyDevice ?? "unknown";
-    const viewport = f.pvViewport ?? f.anyViewport ?? "unknown";
-    const channel = f.pvChannel ?? f.anyChannel ?? "unknown";
-    const source = f.pvSource ?? f.anySource ?? "unknown";
+    const device = f.first?.device ?? "unknown";
+    const viewport = f.first?.viewport ?? "unknown";
+    const channel = f.first?.acquisition_channel ?? "unknown";
+    const source = f.first?.source ?? "unknown";
     const key = [f.experiment_id, device, viewport, channel, source].join("\u0000");
     const row =
       steps.get(key) ??
@@ -220,7 +231,14 @@ export function reportFromEvents(events: AnalyticsEvent[]): AnalyticsReport {
     add(`n\u0000${e.experiment_id}\u0000${e.name}`, e.visitor_id);
     for (const b of PROP_BREAKDOWNS) {
       const value = e.props[b.prop];
-      if (e.name === b.name && value !== undefined)
+      if (
+        e.name === b.name &&
+        value !== undefined &&
+        CATALOG[b.name as keyof typeof CATALOG].props[b.prop]?.kind === "enum" &&
+        (
+          CATALOG[b.name as keyof typeof CATALOG].props[b.prop] as { values: readonly unknown[] }
+        ).values.includes(value)
+      )
         add(
           `p\u0000${e.experiment_id}\u0000${b.name}\u0000${b.prop}\u0000${String(value)}`,
           e.visitor_id,
@@ -320,17 +338,20 @@ export function profilesFromEvents(
   visitorIds: string[],
 ): VisitorProfile[] {
   const wanted = new Set(visitorIds);
-  const found = new Map<string, VisitorProfile>();
+  const found = new Map<string, AnalyticsEvent>();
   for (const e of events) {
     if (e.name !== "page_view" || !wanted.has(e.visitor_id)) continue;
-    const p = found.get(e.visitor_id) ?? { visitor_id: e.visitor_id, device: "", viewport: "" };
-    if ((e.device ?? "") > p.device) p.device = e.device ?? "";
-    if ((e.viewport ?? "") > p.viewport) p.viewport = e.viewport ?? "";
-    found.set(e.visitor_id, p);
+    const prior = found.get(e.visitor_id);
+    if (
+      !prior ||
+      e.created_at < prior.created_at ||
+      (e.created_at === prior.created_at && e.id < prior.id)
+    )
+      found.set(e.visitor_id, e);
   }
-  return [...found.values()].map((p) => ({
-    ...p,
-    device: p.device || "unknown",
-    viewport: p.viewport || "unknown",
+  return [...found.values()].map((e) => ({
+    visitor_id: e.visitor_id,
+    device: (DEVICE_CLASSES as readonly string[]).includes(e.device!) ? e.device! : "unknown",
+    viewport: (VIEWPORT_BANDS as readonly string[]).includes(e.viewport!) ? e.viewport! : "unknown",
   }));
 }

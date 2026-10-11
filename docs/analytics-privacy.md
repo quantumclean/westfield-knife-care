@@ -76,12 +76,19 @@ two minutes (`migrations/0002_rate_limits.sql`); it never stores the IP itself.
     used to probe for visitor ids.
   - The endpoint accepts nothing but the id and key, and is limited to 5 calls per minute
     per IP.
-  - Afterwards the browser forgets its id, attribution and key and turns counting off. It
-    keeps its price arm, so the price shown does not change.
-  - Limits: events recorded before this release, or from browsers without Web Crypto,
+  - Counting is disabled **before** deletion starts. On failure the browser retains its
+    id and deletion key for a real retry; missing keys are never reported as success.
+    A successful response rotates the in-memory/session identity and owner before counting
+    can resume, while preserving the price arm. Other tabs refresh their identity on re-enable.
+  - Migration 0005 adds a proof-specific tombstone in the same D1 transaction as deletion.
+    Late keepalive requests with that visitor/owner cannot recreate records. Tombstones
+    expire after 90 days and are physically removed by the cleanup Worker.
+  - Limits: events recorded before this release or through the legacy v1 protocol
     have no `owner` and can't be self-deleted. They expire within 90 days, or the owner
     deletes them on request. Clearing site data loses the key, and with it self-service
-    deletion of earlier events.
+    deletion of earlier events. New v2 events require an owner hash; browsers without
+    Web Crypto do not send new analytics events. The panel distinguishes owned records
+    from legacy/Google records it cannot erase.
 - **Retention change.** v1 wrote a 180-day expiry. Code from this release writes 90 days.
   Existing rows are brought down to 90 days by `migrations/0003_analytics_retention.sql`,
   which the owner applies (staging first). See `docs/d1-retention-cleanup.md`.
@@ -96,13 +103,13 @@ Owner decisions (2026-10-11, issue #29):
 - **First-party counts: on by default, with an opt-out.** They are not sold, not shared and
   not used for advertising. The footer's "Privacy & analytics" panel explains them and turns
   them off. Off means nothing is sent, including anything already queued.
-- **Google Analytics: opt-in only.** It loads only when the site has a measurement id, the
+- **Google Analytics: opt-in only.** It loads only when a reviewed manual-only property is configured (`VITE_GA4_MANUAL_EVENTS_ONLY=true`), the site has a measurement id, the
   visitor switches it on, there is no GPC or DNT signal, the page is not the thank-you page,
   and no dialog is open.
   - Consent Mode is set to deny `ad_storage`, `ad_user_data` and `ad_personalization`.
     Google signals and ad personalisation are off.
   - It receives only catalog events marked GA4, with sanitised `page_location` (route plus
-    campaign tags) and `page_referrer` (origin only).
+    registered campaign ids) and `page_referrer` (known provider origin only).
   - It never receives our visitor id, view or event ids, order ids or anything from `/thanks`.
   - Withdrawing consent denies `analytics_storage` and removes `_ga` cookies.
 - **GPC and Do Not Track block third parties only.** They always keep GA4, and any future
@@ -180,7 +187,11 @@ before any production use):
   pauses sending for the rest of the page load, so there is no retry storm. Offline events
   are held in memory (at most 40) until the browser is back online.
 - Per page load the browser sends at most 80 events, with `client_error` capped at 3 and
-  `form_error` at 20. The API limits `/api/events` to 120 requests per minute per IP.
+  `form_error` at 20. D1 also enforces 80 events per view atomically (legacy v1: per
+  visitor scope), and binds its visitor, owner, experiment, source, channel and route.
+  Batches cannot mix identities or views. The Pages API permits 120 requests **and**
+  1,200 event units per minute per IP. Independent customers on a shared IP have independent
+  view budgets; the IP ceiling is a shared abuse limit, not a person count.
 - The API never logs event bodies. Validation failures return a fixed error without echoing
   input.
 - Reporting endpoints (`/api/admin/summary`, `/api/admin/insights`, `/api/admin/events`)
@@ -199,12 +210,16 @@ before any production use):
 
 - Reports never load raw events into the Worker. `/admin/summary` and `/admin/insights`
   call `repo.analyticsReport`, which on D1 runs six `GROUP BY` queries over the window.
-  Each is one range scan of `analytics_events` by `created_at`.
+  Window filters apply before aggregation; window functions choose coherent first page-view dimensions.
 - The Worker receives only aggregate rows. Their number is bounded by arms × device ×
   viewport × channel × source and by the allowlisted enums, not by traffic. The 200,000-event
-  test returns 62 rows.
-- Paid orders by device look up only paid visitors, 50 at a time, through the index from
-  `migrations/0004_analytics_visitor_index.sql`. Deletion uses the same index.
+  test checks bounded results, including historical hostile source/experiment cardinality.
+  SQL canonicalizes source, experiment, names and property dimensions **before** grouping.
+- Orders and waitlist totals use `commerceReport` SQL aggregates with the requested window
+  applied before counting; there is no 5,000-record list cap. No raw customer JSON reaches
+  these report services. Paid device/viewport uses one first retained page view in the same
+  arm/window, no later than order creation, through the 0004 visitor index. Deletion uses
+  the same index. No match is reported as unknown.
 - The SQL is checked against a reference implementation (`reportFromEvents`) by a contract
   test, so the D1 and in-memory numbers agree.
 - **Measured locally:** 200,000 events aggregate in about 7.5 s on Node's SQLite. Real D1
@@ -225,15 +240,44 @@ Remaining limits:
    spot checks; use the report for analysis.
 5. **Legacy AWS build.** The DynamoDB repository still aggregates in the Lambda from a full
    listing. It is not used on Cloudflare.
-6. **Distinct visitors per segment.** A visitor is assigned one device, viewport, channel
-   and source per arm (from their page views). Someone who switched devices counts once,
-   under the larger value.
+6. **Distinct visitors per segment.** All dimensions come from one earliest page view in
+   the report window and arm (first event fallback), with timestamp/id ties resolved together.
+7. **Untrusted telemetry.** Public requests can still fabricate random ids and UX actions.
+   Server budgets and fixed registries bound amplification and result cardinality; they do
+   not prove human identity. UX counts and visitor-based rates are estimates, not ordered
+   cohort conversions. Paid-order counts and net revenue are server-state totals and may
+   exceed measured visitors (opt-out, multiple orders, expiration).
 
 ## Costs
 
-First-party analytics runs on the existing Cloudflare Pages Functions and D1. Each event
-insert is about 3 D1 "rows written": the row plus two indexes. On the Workers Free plan
-(100,000 rows written and 5 million read per day, at the time of writing), that is roughly
-3,000 ten-event visits a day before limits matter. One report reads about six rows per
-event in its window (see "Reporting at scale"). Check Cloudflare's current D1 pricing before scaling. GA4 standard and Clarity
-are free. Nothing in this change adds a paid service.
+First-party analytics uses the existing Pages Functions and D1. The created, expiry,
+visitor and view indexes increase write accounting; the abuse guards and report queries
+also consume reads. Do not infer a daily visit allowance from the old two-index estimate.
+Check actual D1 accounting and current quotas before scaling. Result cardinality is bounded,
+but SQL scan cost and duration still grow with the report window. No paid provider is added.
+GA4 standard is optional and has its own quotas; nothing enables it automatically.
+
+## Registered context and Google rollout
+
+Analytics sources must appear in `ANALYTICS_SOURCES` in `packages/shared/src/analytics.ts`.
+Unknown tags (including names, streets and ZIPs) collapse to `other`, including historical
+rows and paid-order source splits. Register reviewed non-personal campaign ids before use;
+operational order attribution can retain its existing validation, but analytics never exports
+an arbitrary tag. Visitor ids must match the random UUID / legacy browser-id formats.
+Google URL parameters are limited to registered sources, experiment ids and channel enums;
+referrers are limited to known provider origins. No visitor id or ownership proof is sent.
+
+Setting a measurement id is insufficient: `VITE_GA4_MANUAL_EVENTS_ONLY=true` is required.
+The owner must first disable **all Enhanced Measurement** in the GA4 property, including
+form interactions, outbound clicks and history-based page views, review a synthetic browser
+network trace, and set the property retention to two months. This configuration was not
+changed or verified here. Until confirmed, the tag remains disabled. Manual forwarding
+also stops on `/thanks` and inside open dialogs; automatic provider behavior is not proven
+by mocked tests. Google records require Google's separate deletion tool.
+
+Legacy AWS: transaction-based event guards require the declared DeleteItem and
+ConditionCheckItem permissions if that adapter is ever used. Nothing applies those IAM
+changes here. Its reports still aggregate full paginated listings in Lambda, and self-delete
+uses an eventually consistent visitor GSI; newly indexed rows may require a later retry or
+TTL cleanup. Cloudflare/D1 is the reviewed deployment target; do not treat this as AWS
+privacy acceptance or deploy it without separate integration verification.

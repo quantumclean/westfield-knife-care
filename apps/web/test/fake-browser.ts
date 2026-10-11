@@ -97,6 +97,7 @@ export function installBrowser(options: BrowserOptions = {}) {
     }),
   );
   vi.stubEnv("VITE_GA4_MEASUREMENT_ID", options.ga ?? "");
+  vi.stubEnv("VITE_GA4_MANUAL_EVENTS_ONLY", "true");
 
   return {
     win,
@@ -126,7 +127,10 @@ export function installBrowser(options: BrowserOptions = {}) {
   };
 }
 
-export function fakeSession(arm: "a" | "b" = "a", visitor = "visitor-00000001"): Session {
+export function fakeSession(
+  arm: "a" | "b" = "a",
+  visitor = "00000000-0000-4000-8000-000000000001",
+): Session {
   const two = arm === "b";
   return {
     visitor_id: visitor,
