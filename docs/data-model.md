@@ -1,7 +1,9 @@
 # Data model
 
-Records use snake_case and are stored as-is in DynamoDB (`data` attribute)
-and returned as-is from the admin endpoints, so an export is analysis-ready.
+Records use snake_case and are stored as-is in Cloudflare D1 (a `data` JSON
+column per table, see `migrations/`) and returned as-is from the admin
+endpoints, so an export is analysis-ready. The legacy AWS build stored the same
+records in DynamoDB (layout below).
 Types live in `packages/shared/src/types.ts`.
 
 ## Order
@@ -48,9 +50,18 @@ create (pending/scheduled/pending) → webhook paid → operator picked_up → o
 
 ## Analytics event
 
-`id, created_at, name, visitor_id, experiment_id, offer_version, price_version, source, acquisition_channel, page, props`. See `docs/analytics-events.md`. Expire after 180 days.
+`id, created_at, name, visitor_id, experiment_id, offer_version, price_version, source, acquisition_channel, page, props`, plus `v`, `view_id`, `device` and `viewport` from schema v2. `page` is a route id and `props` follow the allowlisted catalog. See `docs/analytics-events.md`. Deleted 90 days after `created_at` (`expires_at`, cleanup Worker); see `docs/analytics-privacy.md`.
 
-## Storage layout (DynamoDB single table)
+## Storage layout (Cloudflare D1)
+
+| table              | key      | indexed columns                                 | `data`                    |
+| ------------------ | -------- | ----------------------------------------------- | ------------------------- |
+| `orders`           | `id`     | `created_at`, `customer_email`, `experiment_id` | the order record          |
+| `waitlist`         | `id`     | `created_at`                                    | the waitlist entry        |
+| `analytics_events` | `id`     | `created_at`, `expires_at`                      | the event record          |
+| `api_rate_limits`  | `bucket` | `expires_at`                                    | (salted IP hash counters) |
+
+## Legacy storage layout (DynamoDB single table, AWS build only)
 
 | item     | pk              | sk         | gsi1pk (by person)  | gsi1sk       | gsi2pk (by type)  | gsi2sk       |
 | -------- | --------------- | ---------- | ------------------- | ------------ | ----------------- | ------------ |
@@ -69,5 +80,6 @@ nightly instead of adding indexes.
   total only. Ids are random UUIDs.
 - Admin endpoints require the shared key and are meant for the operator's
   terminal, not the browser.
-- Customer data lives only in DynamoDB (PITR on, encrypted) and Stripe. Do
-  not export it into the repository, issues or chat.
+- Customer data lives only in D1 (and DynamoDB for the legacy AWS build) and
+  Stripe. Do not export it into the repository, issues or chat.
+- Analytics events hold no customer details; see `docs/analytics-privacy.md`.

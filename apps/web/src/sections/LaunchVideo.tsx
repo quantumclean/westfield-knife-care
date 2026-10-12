@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { EVENTS, track } from "../lib/analytics.ts";
 
 /**
  * The 23-second launch film (source: marketing/launch-video): "Dull.",
@@ -9,6 +8,8 @@ import { EVENTS, track } from "../lib/analytics.ts";
  *
  * Nothing but the poster loads until the film is half on screen.
  * Files are versioned so a re-render never collides with a cached copy.
+ * Plays, progress and unmute are measured by lib/engagement.ts (it watches
+ * `#process-film video`), so this component has no tracking of its own.
  */
 const VERSION = "v3";
 type Format = "landscape" | "square";
@@ -40,14 +41,6 @@ export function LaunchVideo() {
   const [muted, setMuted] = useState(true);
   const [playing, setPlaying] = useState(false);
   const [userPaused, setUserPaused] = useState(false);
-  const viewed = useRef(false);
-  const unmuted = useRef(false);
-
-  const markViewed = (trigger: string) => {
-    if (viewed.current) return;
-    viewed.current = true;
-    track(EVENTS.video_view, { trigger, format });
-  };
 
   // Autoplay (muted) only while at least half the film is on screen.
   useEffect(() => {
@@ -58,10 +51,7 @@ export function LaunchVideo() {
         // isIntersecting is true for any sliver on screen (including the first
         // callback), so check the actual ratio against the 50% threshold.
         if (entry && entry.intersectionRatio >= 0.5) {
-          video
-            .play()
-            .then(() => markViewed("autoplay"))
-            .catch(() => {});
+          video.play().catch(() => {});
         } else {
           video.pause();
         }
@@ -78,7 +68,7 @@ export function LaunchVideo() {
     if (!video) return;
     if (video.paused) {
       setUserPaused(false);
-      void video.play().then(() => markViewed("click"));
+      video.play().catch(() => {});
     } else {
       setUserPaused(true);
       video.pause();
@@ -94,11 +84,7 @@ export function LaunchVideo() {
     if (!next) {
       if (video.paused) {
         setUserPaused(false);
-        void video.play().then(() => markViewed("click"));
-      }
-      if (!unmuted.current) {
-        unmuted.current = true;
-        track(EVENTS.video_unmute, { format, at_seconds: Math.round(video.currentTime) });
+        video.play().catch(() => {});
       }
     }
   };

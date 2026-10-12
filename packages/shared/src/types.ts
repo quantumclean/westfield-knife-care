@@ -203,7 +203,10 @@ export interface WaitlistEntry {
   visitor_id?: string;
 }
 
-/** First-party analytics event. */
+/**
+ * First-party analytics event as stored. Pseudonymous: `visitor_id` is a random id held in the
+ * visitor's browser, never sent to third parties. Props follow the catalog in analytics.ts.
+ */
 export interface AnalyticsEvent {
   id: string;
   created_at: string;
@@ -214,6 +217,15 @@ export interface AnalyticsEvent {
   price_version: string;
   source: string;
   acquisition_channel: AcquisitionChannel;
+  /** Route id ("/", "/a", "/b", "/thanks" or "other"); raw paths were stored before v2. */
   page: string;
   props: Record<string, string | number | boolean>;
+  /** Schema version; absent on events recorded before v2. */
+  v?: number;
+  /** Random id of the page load the event came from (bounces, per-view dedup). */
+  view_id?: string;
+  device?: string;
+  viewport?: string;
+  /** SHA-256 of the sending browser's deletion key (proof of possession for erasure). */
+  owner?: string;
 }

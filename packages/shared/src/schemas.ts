@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { VISITOR_ID_PATTERN } from "./analytics.ts";
 import { isServedZip } from "./content.ts";
 import {
   ACQUISITION_CHANNELS,
@@ -40,7 +41,7 @@ export const sourceSchema = z
   .toLowerCase()
   .regex(/^[a-z0-9][a-z0-9._-]{0,63}$/);
 export const acquisitionChannelSchema = z.enum(ACQUISITION_CHANNELS);
-export const visitorIdSchema = z.string().trim().min(8).max(64);
+export const visitorIdSchema = z.string().regex(VISITOR_ID_PATTERN);
 
 /** Shown (and returned by the API) for a valid ZIP outside the service area. */
 export const OUT_OF_AREA = "We don't pick up in this ZIP code yet.";
@@ -95,19 +96,6 @@ export const createWaitlistSchema = contextSchema.extend({
   notes: optionalTrimmed(500),
 });
 export type CreateWaitlistInput = z.infer<typeof createWaitlistSchema>;
-
-const eventPropValue = z.union([z.string().max(200), z.number(), z.boolean()]);
-
-export const createEventSchema = contextSchema.extend({
-  name: z
-    .string()
-    .trim()
-    .regex(/^[a-z][a-z0-9_]{2,49}$/),
-  visitor_id: visitorIdSchema,
-  page: z.string().trim().max(200).default("/"),
-  props: z.record(z.string().max(50), eventPropValue).default({}),
-});
-export type CreateEventInput = z.infer<typeof createEventSchema>;
 
 /** Operator updates recorded from the field: pickups, returns, feedback. */
 export const updateOrderSchema = z

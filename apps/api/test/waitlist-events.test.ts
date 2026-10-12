@@ -12,7 +12,7 @@ describe("POST /api/waitlist", () => {
         experiment_id: "experiment-002",
         source: "nextdoor-post-1",
         acquisition_channel: "social",
-        visitor_id: "visitor-00000002",
+        visitor_id: "00000000-0000-4000-8000-000000000002",
         name: "Grace Hopper",
         email: "Grace@Example.com",
         service_interest: "always_sharp",
@@ -55,15 +55,19 @@ describe("POST /api/events and GET /api/admin/summary", () => {
         }),
       );
 
-    for (const v of ["visitor-0000000a", "visitor-0000000b", "visitor-0000000c"]) {
+    for (const v of [
+      "00000000-0000-4000-8000-00000000000a",
+      "00000000-0000-4000-8000-00000000000b",
+      "00000000-0000-4000-8000-00000000000c",
+    ]) {
       expect((await send("page_view", v)).status).toBe(204);
     }
-    await send("page_view", "visitor-0000000a"); // second view, same visitor
-    await send("cta_click", "visitor-0000000a", "experiment-001", {
+    await send("page_view", "00000000-0000-4000-8000-00000000000a"); // second view, same visitor
+    await send("cta_click", "00000000-0000-4000-8000-00000000000a", "experiment-001", {
       props: { cta: "sharpen", location: "hero" },
     });
-    await send("checkout_started", "visitor-0000000a");
-    await send("page_view", "visitor-0000000d", "experiment-002", {
+    await send("checkout_started", "00000000-0000-4000-8000-00000000000a");
+    await send("page_view", "00000000-0000-4000-8000-00000000000d", "experiment-002", {
       acquisition_channel: "social",
       source: "instagram",
     });
@@ -71,7 +75,7 @@ describe("POST /api/events and GET /api/admin/summary", () => {
     const created = await readJson(
       await app.request(
         "/api/orders",
-        json("POST", { ...validOrder, visitor_id: "visitor-0000000a" }),
+        json("POST", { ...validOrder, visitor_id: "00000000-0000-4000-8000-00000000000a" }),
       ),
     );
     await app.request(

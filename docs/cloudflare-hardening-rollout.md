@@ -8,13 +8,21 @@ From the repository root on the approved backend branch:
 
 ```powershell
 npx --yes wrangler@latest d1 execute westfield-knife-care-staging --remote --file migrations/0002_rate_limits.sql
+npx --yes wrangler@latest d1 execute westfield-knife-care-staging --remote --file migrations/0003_analytics_retention.sql
+npx --yes wrangler@latest d1 execute westfield-knife-care-staging --remote --file migrations/0004_analytics_visitor_index.sql
+npx --yes wrangler@latest d1 execute westfield-knife-care-staging --remote --file migrations/0005_analytics_abuse.sql
 ```
 
-Verify migration:
+Verify migrations:
 
 ```powershell
-npx --yes wrangler@latest d1 execute westfield-knife-care-staging --remote --command "SELECT name FROM sqlite_master WHERE name = 'api_rate_limits';"
+npx --yes wrangler@latest d1 execute westfield-knife-care-staging --remote --command "SELECT name FROM sqlite_master WHERE name IN ('api_rate_limits', 'analytics_deletions', 'events_visitor_idx', 'events_view_idx');"
 ```
+
+Repeat for the production database **before** merging analytics schema v2 to `main` if
+Pages builds `main` for production (see `docs/d1-retention-cleanup.md`). Without 0005 the
+analytics endpoints answer 503 (booking keeps working) and no first-party analytics is
+recorded.
 
 Existing orders remain in D1; the new optimistic-locking revision is tracked
 inside the order JSON. Existing orders without the field are treated as revision 0.
@@ -37,7 +45,10 @@ Staging rate limits per salted IP hash, in a UTC-minute bucket:
 
 - POST /api/orders: 5 requests/minute
 - POST /api/waitlist: 5 requests/minute
-- POST /api/events: 120 requests/minute
+- POST /api/events: 120 requests/minute and 1,200 events/minute, plus at most
+  200 requests carrying a `page_view` per UTC day (bounds fabricated visitors
+  per address; excess page loads are simply not counted)
+- POST /api/events/forget: 5 requests/minute
 - GET /api/orders/:id: 120 requests/minute per IP; after 30 missing-order
   responses per minute, further misses return 429. Successful reads remain
   available until the overall 120-request limit is reached.
@@ -47,8 +58,8 @@ Staging rate limits per salted IP hash, in a UTC-minute bucket:
 - /api/admin/*: 30 requests/minute
 - /api/webhooks/stripe: no IP throttle (signed Stripe retries must work)
 
-The customer JSON body limits are 16 KiB for orders and waitlist, and 4 KiB for
-events and feedback. Authenticated admin PATCH accepts up to 16 KiB. Stripe
+The customer JSON body limits are 16 KiB for orders, waitlist and event batches,
+4 KiB for feedback and 1 KiB for analytics deletion requests. Authenticated admin PATCH accepts up to 16 KiB. Stripe
 webhooks have a separate 2 MiB body limit; signature verification and retries
 are unchanged. Oversized bodies return 413, including streamed requests without
 Content-Length. Malformed JSON returns 400.
@@ -89,7 +100,8 @@ Before deployment, validate the bundle without changing Cloudflare state:
 npx --yes wrangler@latest deploy --dry-run --config workers/cleanup/wrangler.jsonc
 ```
 
-It removes expired analytics (>180 days) and short-lived rate-limit buckets.
+It removes expired analytics (>90 days once `migrations/0003_analytics_retention.sql`
+is applied) and short-lived rate-limit buckets.
 It does not delete customer order or waitlist records. Agree on their retention,
 deletion and backup rules before production.
 

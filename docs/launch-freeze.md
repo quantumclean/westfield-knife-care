@@ -57,6 +57,22 @@ potential confound — if conversion moves, was it the price, or the Tuesday
 you shipped a redesigned button? Keeping the surface still is what makes
 the result trustworthy enough to act on.
 
+## Owner-requested measurement change: analytics v2 (issue #29)
+
+Requested by the owner in issue #29, not a drive-by. Shipped to **both arms at
+once**, so it cannot favour either price.
+
+- **Visible change:** one footer link, "Privacy & analytics", which opens a
+  notice and preferences panel. There is no banner, and the booking flow is
+  unchanged.
+- **Measurement change:** event schema v2 (`docs/analytics-events.md`). It keeps
+  the v1 event names and funnel. It adds engagement, step, error and
+  performance events, drops order ids from events, and cuts retention to 90 days.
+- **Analysis:** record the deploy time here and compare arms within windows that
+  start after it. Pre-v2 events have no device or view data.
+
+Deployed: _(fill in the production deploy time, UTC)_
+
 ## Lifting the freeze
 
 The freeze ends when an experiment is concluded per the decision rules in

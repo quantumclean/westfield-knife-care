@@ -15,7 +15,7 @@ import {
 } from "@wkc/shared";
 import { Button, Field, Input, Modal, Notice, Select, Textarea } from "@wkc/ui";
 import { ApiError, api } from "../lib/api.ts";
-import { EVENTS, track } from "../lib/analytics.ts";
+import { EVENTS, formErrorProps, track } from "../lib/analytics.ts";
 import { errorSummary, useFocusFirstInvalid } from "../lib/forms.ts";
 import {
   closedMessage,
@@ -188,6 +188,8 @@ export function BookingDialog({
   // New step: start at the top, and put the cursor where typing starts.
   useEffect(() => {
     if (!open) return;
+    // Counted once per opening of the sheet (the catalog de-duplicates repeats).
+    if (step === 2) track(EVENTS.booking_step, { step: "details" });
     const form = formRef.current;
     form?.closest(".modal-body")?.scrollTo({ top: 0 });
     if (step === 2 && form) {
@@ -273,7 +275,7 @@ export function BookingDialog({
         parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`),
       );
       showErrors(fieldErrors);
-      track(EVENTS.form_error, { form: "booking", fields: Object.keys(fieldErrors).join(",") });
+      track(EVENTS.form_error, formErrorProps("booking", parsed.error.issues, candidate));
       return;
     }
 
@@ -282,13 +284,10 @@ export function BookingDialog({
     // Flush before navigation, even if checkout starts inside the draft debounce.
     saveDraft({ knives, care_day: careDay, contact });
     setSubmitting(true);
-    track(EVENTS.booking_submitted, { knives, care_day: careDay, total_cents: quote.total_cents });
+    track(EVENTS.booking_submitted, { knives, total_cents: quote.total_cents });
     try {
       const result = await api.createOrder(parsed.data);
-      track(EVENTS.checkout_started, {
-        order_id: result.order_id,
-        total_cents: result.quote.total_cents,
-      });
+      track(EVENTS.checkout_started, { total_cents: result.quote.total_cents });
       window.location.assign(result.checkout_url);
     } catch (error) {
       setSubmitting(false);

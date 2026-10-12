@@ -1,6 +1,8 @@
 import type { RefObject } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import { isServedZip } from "@wkc/shared";
 import { Button } from "@wkc/ui";
+import { EVENTS, track } from "../lib/analytics.ts";
 import {
   createAddressSearchFlow,
   type AddressSuggestion,
@@ -10,6 +12,9 @@ import { loadAppleAddressSearch } from "../lib/apple-maps.ts";
 
 const token = import.meta.env.VITE_APPLE_MAPS_TOKEN?.trim();
 const addressFields = new Set(["line1", "line2", "city", "state", "zip"]);
+
+/** Analytics sees only what happened with the suggestions, never the query or an address. */
+const resultsBand = (count: number) => (count === 0 ? "0" : count <= 3 ? "1-3" : "4+");
 
 interface AddressSuggestionsProps {
   formRef: RefObject<HTMLFormElement>;
@@ -25,6 +30,8 @@ export function AddressSuggestions({ formRef, onAddress }: AddressSuggestionsPro
   const [results, setResults] = useState<AddressSuggestion[]>([]);
   const [active, setActive] = useState(-1);
   const [message, setMessage] = useState("");
+  // Whether this search produced an address, so later manual edits aren't counted as fallback.
+  const chosen = useRef(false);
 
   useLayoutEffect(() => {
     if (!token || !requested) return;
@@ -34,8 +41,10 @@ export function AddressSuggestions({ formRef, onAddress }: AddressSuggestionsPro
       if (
         (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) &&
         addressFields.has(event.target.name)
-      )
+      ) {
         flow.current?.invalidate();
+        if (!chosen.current) track(EVENTS.address_suggest, { action: "fallback" });
+      }
     };
     const onSubmit = () => flow.current?.invalidate();
     const fail = () => {
@@ -43,6 +52,7 @@ export function AddressSuggestions({ formRef, onAddress }: AddressSuggestionsPro
       mounted = false;
       setStatus("error");
       setMessage("Address suggestions are unavailable. Enter your address below.");
+      track(EVENTS.address_suggest, { action: "unavailable" });
     };
     form?.addEventListener("input", onManualInput);
     form?.addEventListener("change", onManualInput);
@@ -60,8 +70,18 @@ export function AddressSuggestions({ formRef, onAddress }: AddressSuggestionsPro
           (suggestions) => {
             setResults(suggestions);
             setActive(-1);
+            if (suggestions.length)
+              track(EVENTS.address_suggest, {
+                action: "shown",
+                results: resultsBand(suggestions.length),
+              });
           },
-          onAddress,
+          (address) => {
+            chosen.current = true;
+            track(EVENTS.address_suggest, { action: "chosen" });
+            if (!isServedZip(address.zip)) track(EVENTS.address_suggest, { action: "out_of_area" });
+            onAddress(address);
+          },
           setMessage,
         );
         setStatus("ready");

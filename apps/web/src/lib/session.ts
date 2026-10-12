@@ -1,5 +1,6 @@
 import {
   deriveAttribution,
+  VISITOR_ID_PATTERN,
   resolveExperimentOrDefault,
   resolveFlyerRoute,
   selectExperiment,
@@ -40,10 +41,28 @@ function write(key: string, value: string): void {
   }
 }
 
+/**
+ * Exactly `length` random base-36 characters, for browsers without `crypto.randomUUID`. A fixed
+ * length matters: the API accepts only the exact fallback id formats.
+ */
+export function randomBase36(length: number): string {
+  const alphabet = "0123456789abcdefghijklmnopqrstuvwxyz";
+  const bytes = new Uint8Array(length);
+  try {
+    crypto.getRandomValues(bytes);
+  } catch {
+    for (let i = 0; i < length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  return Array.from(bytes, (b) => alphabet[b % 36]).join("");
+}
+
+/** Base-36 milliseconds, always 8 characters (true until the year 2059). */
+export const timeBase36 = (): string => Date.now().toString(36).padStart(8, "0").slice(-8);
+
 function newVisitorId(): string {
   return typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()
-    : `v-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    : `v-${timeBase36()}-${randomBase36(8)}`;
 }
 
 export function loadSession(
@@ -58,7 +77,9 @@ export function loadSession(
   // so reading the path here is all that's needed to detect it.
   const flyerRoute = resolveFlyerRoute(location.pathname);
 
-  const visitor_id = read(KEYS.visitor) ?? newVisitorId();
+  const storedVisitor = read(KEYS.visitor);
+  const visitor_id =
+    storedVisitor && VISITOR_ID_PATTERN.test(storedVisitor) ? storedVisitor : newVisitorId();
   write(KEYS.visitor, visitor_id);
 
   const chosen = selectExperiment({
@@ -94,7 +115,16 @@ export function loadSession(
   return { visitor_id, experiment, attribution };
 }
 
-/** Fields every API call carries so the backend can attribute it. */
+/** The random visitor id this browser holds, if any (used by "Delete my analytics data"). */
+export function storedVisitorId(): string | null {
+  return read(KEYS.visitor);
+}
+
+/**
+ * Fields an order or waitlist request carries so the backend can attribute it. The campaign
+ * tag is kept as given (the API validates its format), so an unregistered flyer batch is not
+ * lost from the order record; analytics events and reports map unregistered tags to "other".
+ */
 export function sessionContext(session: Session) {
   return {
     experiment_id: session.experiment.experiment.id,

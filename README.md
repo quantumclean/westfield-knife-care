@@ -41,6 +41,10 @@ Pricing, copy, offers and acquisition source are variables, not constants.
   actual_repeat_purchase. See `docs/data-model.md`.
 - `GET /api/admin/summary` turns stored events and orders into a per-experiment
   funnel with revenue, conversion, channel split and repeat rates.
+- `GET /api/admin/insights` adds engagement, booking-step drop-offs, form-error
+  fields, device and source splits, with paid orders from Stripe-confirmed
+  order state. Analytics is privacy-first: allowlisted events only, no form
+  contents, 90-day retention, GA4 opt-in only. See `docs/analytics-privacy.md`.
 
 To run a new test: add an offer and/or price version, add an experiment that
 uses them, open a pull request. Never edit a version that has received
@@ -85,21 +89,23 @@ curl -s -X PATCH localhost:8787/api/admin/orders/<id> -H "x-admin-key: $ADMIN_AP
 
 All routes are under `/api` (served on the site's own domain via CloudFront).
 
-| Method | Path                             | Purpose                                                |
-| ------ | -------------------------------- | ------------------------------------------------------ |
-| GET    | `/health`                        | Liveness                                               |
-| GET    | `/config`                        | Active experiments, offers, prices, bookable care days |
-| POST   | `/orders`                        | Create an order, returns a Stripe Checkout URL         |
-| GET    | `/orders/:id`                    | Public status view for the thank-you page              |
-| POST   | `/orders/:id/feedback`           | Customer answers "would you use us again?"             |
-| POST   | `/waitlist`                      | Always Sharp pilot signup                              |
-| POST   | `/events`                        | First-party analytics event                            |
-| POST   | `/webhooks/stripe`               | Stripe webhook (signature verified)                    |
-| GET    | `/admin/summary`                 | Per-experiment funnel and economics                    |
-| GET    | `/admin/orders[?experiment_id=]` | Full order export                                      |
-| PATCH  | `/admin/orders/:id`              | Record pickup, return, repeat intent, notes            |
-| GET    | `/admin/waitlist`                | Waitlist export                                        |
-| GET    | `/admin/events[?since=]`         | Raw event export                                       |
+| Method | Path                              | Purpose                                                |
+| ------ | --------------------------------- | ------------------------------------------------------ |
+| GET    | `/health`                         | Liveness                                               |
+| GET    | `/config`                         | Active experiments, offers, prices, bookable care days |
+| POST   | `/orders`                         | Create an order, returns a Stripe Checkout URL         |
+| GET    | `/orders/:id`                     | Public status view for the thank-you page              |
+| POST   | `/orders/:id/feedback`            | Customer answers "would you use us again?"             |
+| POST   | `/waitlist`                       | Always Sharp pilot signup                              |
+| POST   | `/events`                         | First-party analytics events (allowlisted batch)       |
+| POST   | `/events/forget`                  | Delete this browser's analytics events                 |
+| POST   | `/webhooks/stripe`                | Stripe webhook (signature verified)                    |
+| GET    | `/admin/summary`                  | Per-experiment funnel and economics                    |
+| GET    | `/admin/orders[?experiment_id=]`  | Full order export                                      |
+| PATCH  | `/admin/orders/:id`               | Record pickup, return, repeat intent, notes            |
+| GET    | `/admin/waitlist`                 | Waitlist export                                        |
+| GET    | `/admin/events[?since=]`          | Raw event export                                       |
+| GET    | `/admin/insights[?since=&until=]` | Aggregate UX report by arm, source, device, step       |
 
 ## Deployment (AWS, S3 + CloudFront + Lambda)
 
@@ -191,8 +197,9 @@ aws cloudfront create-invalidation --distribution-id $(terraform output -raw clo
 - **Attribution is first-touch** and stored in the browser so a flyer scan
   that converts three days later still credits the flyer.
 - **Secrets** live in SSM Parameter Store, loaded once per cold start.
-- **Data retention**: analytics events expire after 180 days (DynamoDB TTL);
-  orders and signups are kept. Point-in-time recovery is on.
+- **Data retention**: analytics events are deleted after 90 days (D1
+  `expires_at` and the cleanup Worker; DynamoDB TTL in the legacy AWS build);
+  orders and signups are kept. See `docs/analytics-privacy.md`.
 - **Look and feel** ("Workshop paper"): tokens and components in
   `packages/ui/src/styles.css`, inked art in `apps/web/src/art/`, and the
   hero's fruit-slicing toy in `apps/web/src/toy/` (decorative, lazy, off for

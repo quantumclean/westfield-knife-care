@@ -1,0 +1,110 @@
+# Reading the visitor insights report
+
+`GET /api/admin/insights` turns the first-party events and the order records into one
+aggregate report per experiment arm. It needs the admin key, like every `/api/admin` route.
+
+```bash
+export API=https://sharp.usabiology.com/api      # or the staging host
+alias wkc='curl -sS -H "x-admin-key: $ADMIN_API_KEY"'
+
+# Readable report since the v2 analytics release (use the deploy time from launch-freeze.md)
+wkc "$API/admin/insights?since=2026-10-12T00:00:00Z&format=markdown"
+
+# The same as JSON, for jq or a spreadsheet
+wkc "$API/admin/insights?since=2026-10-12T00:00:00Z" | jq '.arms[] | {experiment_id, funnel, outcomes}'
+```
+
+Parameters:
+
+- `since` and `until`: ISO times, with `until` exclusive. They apply to events, orders
+  and waitlist sign-ups.
+- `min_count`: suppression threshold for breakdown rows, 1–100, default 5.
+- `format=markdown`: return Markdown instead of JSON.
+
+## The six questions
+
+| question                                              | where to look                                                                                                           |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Where did visitors come from?                         | `by_channel` and `by_source` per arm (first touch: flyer, social, search…)                                              |
+| Did they engage?                                      | `engagement.bounce_rate`, `section_reach`, `scroll_depth`, `video`, `faq_openers`; `funnel.engaged`                     |
+| Where do booking steps fail?                          | `drop_offs` (largest losses, with the weakest device), `booking.closed_at`, `booking.form_error_fields` and `_kinds`    |
+| Does address autocomplete help?                       | `booking.address_suggestions` and `submit_rate_with_suggestion` vs `_without_` (needs PR #28 and Maps enabled)          |
+| Do mobile visitors struggle more?                     | `by_device` and `by_viewport` (opened, submitted, paid, paid / visitor); `worst_device` on each drop-off                |
+| Which experiment increases **confirmed paid** orders? | `outcomes.orders_paid` and `revenue_cents` per arm first; `paid_per_visitor` only when `data_quality.warnings` is empty |
+
+## How the numbers are counted
+
+- **Visitors** are unique random browser ids with a page view of a landing page (`/`, `/a`,
+  `/b`). The thank-you page does not count, so a customer opening the follow-up feedback
+  link on another device is not a new visitor. One person on a phone and a laptop counts
+  twice; a visitor who cleared site data or used "Delete my analytics data" starts again.
+- **Funnel**, in unique visitors per step:
+  `visited → engaged → cta_click → booking_opened → booking_details → booking_submitted → checkout_started → paid`.
+  - `engaged` means the visitor interacted (a button, the FAQ, the film), scrolled at
+    least 50%, or stayed 10 seconds or more.
+  - `booking_details` means the booking sheet showed step 2 (contact details).
+  - `paid` counts orders with payment status paid, set by Stripe's webhook. A fully
+    refunded order is **not** paid; it is counted in `outcomes.orders_refunded`. A
+    partially refunded order stays paid, with the refund taken off revenue.
+- **Outcomes.**
+  - `orders_paid` and `revenue_cents` (net) are every paid order in the window. They are
+    the decision metrics: nobody can inflate them without paying.
+  - `paid_with_measured_visit` is the subset whose browser has a counted visit in the same
+    arm and window, before the order. `paid_per_visitor` and `revenue_per_visitor_cents`
+    use only that subset, so numerator and denominator come from the same measured
+    population. Orders from browsers with counting off, deleted or expired data are in
+    `orders_paid` but not in the rates.
+- **Data quality** (`data_quality` per arm):
+  - `page_view_only` / `page_view_only_share`: visitors who sent nothing but page views.
+    Real visits almost always add a section view, a vital or an engagement time, so a
+    high share points at scripts or blocked beacons.
+  - `active_hours`, `peak_hour_visitors`, `median_hour_visitors`: new visitors per UTC hour.
+  - `warnings` is non-empty when over half the visitors are page-view-only, or when one
+    hour brought 20+ new visitors and over 10× the median hour. Then compare that arm on
+    paid orders and revenue only. The API also accepts at most 200 page views per IP
+    address per day (`DAILY_VIEWS_PER_IP`), which bounds what one address can add.
+- **Bounce rate** is the share of landing page loads with no interaction, under 50%
+  scroll, and under 10 seconds visible (or no time recorded).
+- **Duplicates.** Once-per-view events are de-duplicated again in the report, and the count
+  dropped appears as `duplicates_ignored`. Retried batches are stored only once.
+- **Suppression.** In `by_*` rows, numbers are `null` (`<min` in Markdown) when the row has
+  fewer than `min_count` visitors. Arm totals are never suppressed.
+- **Revenue** is net of Stripe refunds. Paid orders by device or viewport are matched to the
+  device their browser first reported; orders without a matching browser id are `unknown`.
+- **Window.** Events are kept 90 days. `events_read` is how many events were aggregated.
+- **Cost of a report.** D1 aggregates the events, and only summary rows reach the Worker, so
+  Worker CPU and memory stay small whatever the traffic. D1 still reads about six rows per
+  event in the window. Report a week at a time with `since`/`until` once traffic grows. See
+  "Reporting at scale" in `docs/analytics-privacy.md` for measured numbers and limits.
+
+## Reading it well
+
+- Compare arms over the **same window** and only after the v2 release time. Earlier rows
+  have no device or view data.
+- Wave 1 numbers are small. A single paid order moves `paid_per_visitor` a lot. Use the
+  decision rules in `docs/experiment-plan.md`, not one week's report.
+- Act on drop-offs:
+  - **large `booking_opened → booking_details` loss:** the price or day choice is the
+    problem
+  - **large `booking_details → booking_submitted` loss, with `form_error_fields`:** a
+    specific field is the problem (for example `phone` with `format`)
+  - **large `checkout_started → paid` loss:** Stripe checkout or cold feet; check
+    `booking.checkout_cancelled_returns`
+- `health.client_errors` with `kind:api`, `kind:chunk` or `area:booking` means real failures. Check the
+  Cloudflare logs for that time.
+- GA4 (if ever enabled) sees only opted-in visitors, so its numbers will be far lower. Do
+  not compare them with these.
+
+## Interpretation and review requirements
+
+Browser visitors/steps are untrusted estimates, not verified people or a sequential cohort
+funnel. Bots may invent ids despite server budgets (per-IP limits slow one address; many
+addresses can still add visitors), which is why the decision metrics are paid orders and net
+revenue and why `data_quality` exists. Orders and net revenue are confirmed server-state
+totals over **order creation time**, without the old 5,000-record cap; they can exceed
+measured visitors. Fully refunded orders are reported separately and never counted as
+paid. Window filters also apply to waitlist signups. Device/viewport use one first retained
+page view in the same arm/window, before order creation; missing telemetry is `unknown`.
+Source labels are registered ids even for historical/paid data. Result cardinality is finite;
+D1 scan cost is not independent of traffic. See analytics-privacy.md for migration 0005,
+cleanup acceptance, Google automatic-measurement prerequisites and legacy AWS limits.

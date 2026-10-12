@@ -6,7 +6,10 @@ import { resolveExperimentOrDefault } from "@wkc/shared";
 import type { BookingDialogProps } from "../src/forms/BookingForm.tsx";
 
 const mocks = vi.hoisted(() => ({ order: vi.fn() }));
-vi.mock("../src/lib/analytics.ts", () => ({ EVENTS: {}, track: vi.fn() }));
+vi.mock("../src/lib/analytics.ts", async (original) => ({
+  ...(await original<typeof import("../src/lib/analytics.ts")>()),
+  track: vi.fn(),
+}));
 vi.mock("../src/lib/api.ts", async (original) => ({
   ...(await original<typeof import("../src/lib/api.ts")>()),
   api: { createOrder: mocks.order },
@@ -66,7 +69,7 @@ beforeEach(async () => {
     onClose: vi.fn(),
     experiment,
     session: {
-      visitor_id: "visitor-focus-test",
+      visitor_id: "00000000-0000-4000-8000-000000000001",
       experiment,
       attribution: { source: "direct", acquisition_channel: "direct" },
     },

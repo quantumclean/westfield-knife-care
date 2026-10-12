@@ -62,7 +62,9 @@ export async function readJsonBody(
 export const BODY_LIMITS = {
   order: 16 * 1024,
   waitlist: 16 * 1024,
-  event: 4 * 1024,
+  /** A batch of up to MAX_EVENTS_PER_BATCH events (about 500 bytes each). */
+  event: 16 * 1024,
+  forget: 1024,
   feedback: 4 * 1024,
   adminPatch: 16 * 1024,
   webhook: 2 * 1024 * 1024,

@@ -1,14 +1,18 @@
 import { Hono } from "hono";
 import {
   EXPERIMENTS,
+  LEGACY_V1_ACCEPTED_UNTIL,
   OFFER_VERSIONS,
   PRICE_VERSIONS,
   activeExperiments,
-  createEventSchema,
+  analyticsSource,
   createOrderSchema,
   createWaitlistSchema,
+  forgetVisitorSchema,
   formatIssues,
   orderFeedbackSchema,
+  ownerHashOf,
+  parseEventPayload,
   upcomingCareDays,
   type AnalyticsEvent,
   type WaitlistEntry,
@@ -97,28 +101,64 @@ export function publicRoutes(deps: Deps) {
     return c.json({ id: entry.id }, 201);
   });
 
+  /**
+   * First-party analytics. Accepts a batch (or one event) that passes the shared catalog and
+   * nothing else: a rejected body gets a bare 400 that never repeats what was sent, and
+   * nothing about the request is logged. Client `event_id`s make retried batches idempotent.
+   */
   app.post("/events", async (c) => {
     const body = await readJsonBody(c.req.raw, BODY_LIMITS.event);
     if (!body.ok) return c.json({ error: body.error }, body.status);
-    const parsed = createEventSchema.safeParse(body.value);
-    if (!parsed.success)
-      return c.json({ error: "invalid_request", issues: formatIssues(parsed.error) }, 400);
-    const input = parsed.data;
-    const { experiment, offer, price } = resolveContext(input.experiment_id);
-    const event: AnalyticsEvent = {
-      id: deps.newId(),
-      created_at: deps.now().toISOString(),
-      name: input.name,
-      visitor_id: input.visitor_id,
-      experiment_id: experiment,
-      offer_version: offer,
-      price_version: price,
-      source: input.source,
-      acquisition_channel: input.acquisition_channel,
-      page: input.page,
-      props: input.props,
-    };
-    await deps.repo.putEvent(event);
+    const parsed = parseEventPayload(body.value);
+    if (!parsed.ok) return c.json({ error: "invalid_event" }, 400);
+    if (parsed.events.some((e) => e.view_id !== "legacy-v1" && !e.owner))
+      return c.json({ error: "invalid_event" }, 400);
+    const created_at = deps.now().toISOString();
+    // v1 bodies (no deletion proof) are accepted only for a short window after the v2 deploy.
+    if (
+      created_at >= LEGACY_V1_ACCEPTED_UNTIL &&
+      parsed.events.some((e) => e.view_id === "legacy-v1")
+    )
+      return c.json({ error: "invalid_event" }, 400);
+    const events = parsed.events.map((input): AnalyticsEvent => {
+      const { experiment, offer, price } = resolveContext(input.experiment_id);
+      return {
+        id: input.event_id ? `ev-${input.event_id}` : deps.newId(),
+        created_at,
+        name: input.name,
+        visitor_id: input.visitor_id,
+        experiment_id: experiment,
+        offer_version: offer,
+        price_version: price,
+        source: analyticsSource(input.source),
+        acquisition_channel: input.acquisition_channel,
+        page: input.route,
+        props: input.props,
+        v: input.v,
+        view_id: input.view_id,
+        device: input.device,
+        viewport: input.viewport,
+        ...(input.owner ? { owner: input.owner } : {}),
+      };
+    });
+    await deps.repo.putEvents(events);
+    return c.body(null, 204);
+  });
+
+  /**
+   * Erase this browser's analytics events ("Delete my analytics data" in the privacy panel).
+   * Proof of possession: events carry the SHA-256 of a random key that only the sending
+   * browser holds, and only events whose hash matches the presented key are deleted. A visitor
+   * id alone (for example one copied from an order export) deletes nothing. Orders and waitlist
+   * entries are not touched here; those requests go to the support address.
+   */
+  app.post("/events/forget", async (c) => {
+    const body = await readJsonBody(c.req.raw, BODY_LIMITS.forget);
+    if (!body.ok) return c.json({ error: body.error }, body.status);
+    const parsed = forgetVisitorSchema.safeParse(body.value);
+    if (!parsed.success) return c.json({ error: "invalid_request" }, 400);
+    // Same response whether or not anything matched, so this cannot probe for visitors.
+    await deps.repo.deleteVisitorEvents(parsed.data.visitor_id, await ownerHashOf(parsed.data.key));
     return c.body(null, 204);
   });
 

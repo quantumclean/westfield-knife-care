@@ -160,7 +160,8 @@ function ThanksPage() {
     } catch {
       // ignore
     }
-    track(EVENTS.checkout_completed, { order_id: order.id, total_cents: order.total_cents });
+    // The order id stays out of analytics; paid orders are counted from order state.
+    track(EVENTS.checkout_completed, { total_cents: order.total_cents });
   }, [order]);
 
   async function sendFeedback(repeat_intent: "yes" | "maybe" | "no") {
