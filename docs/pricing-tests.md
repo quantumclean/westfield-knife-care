@@ -46,10 +46,15 @@ endpoint; they are the two inputs that move contribution most.
 
 ## What to watch per test
 
-1. **Visitor-to-paid rate** per experiment (`visitor_to_paid_rate`).
-2. **Revenue per visitor** = `revenue_cents / funnel.page_view`. This is the
-   number that decides between a cheaper, higher-converting offer and a
-   pricier one.
+1. **Paid orders and net revenue** per experiment (`orders_paid`,
+   `revenue_cents`; fully refunded orders are excluded and shown as
+   `orders_refunded`). At equal exposure these decide between a cheaper,
+   higher-converting offer and a pricier one, and they cannot be inflated
+   without paying.
+2. **Visitor-to-paid rate** (`visitor_to_paid_rate`: paid orders with a
+   counted visit / landing visitors) and revenue per visitor, as diagnostics.
+   Use them only while `/api/admin/insights` shows no `data_quality` warnings
+   for either arm; browser visitor counts can be fabricated.
 3. **Average knives per order.** A bundle of 5 should lift it; if orders
    cluster at 3 to 4 knives under price-002, the anchor is too high.
 4. **Drop-off between `checkout_started` and `checkout_completed`.** A gap

@@ -26,8 +26,10 @@ export interface StepRow {
   viewport: string;
   channel: string;
   source: string;
-  /** Visitors with a page_view (the denominator everywhere). */
+  /** Visitors with a landing-page page_view (the denominator everywhere; `/thanks` excluded). */
   visited: number;
+  /** Of those, visitors who sent nothing but page views (a data-quality signal). */
+  view_only: number;
   engaged: number;
   cta: number;
   opened: number;
@@ -69,6 +71,13 @@ export interface FormErrorRow {
   visitors: number;
 }
 
+/** New landing visitors per arm per UTC hour (`YYYY-MM-DDTHH`), for spotting spikes. */
+export interface HourRow {
+  experiment_id: string;
+  hour: string;
+  visitors: number;
+}
+
 export interface AnalyticsReport {
   events_read: number;
   /** Repeats of once-per-view events (same page load, same event and props). */
@@ -78,6 +87,7 @@ export interface AnalyticsReport {
   names: NameRow[];
   views: ViewRow[];
   form_errors: FormErrorRow[];
+  hours: HourRow[];
 }
 
 export interface VisitorProfile {
@@ -103,6 +113,10 @@ export const PROP_BREAKDOWNS: readonly { name: string; prop: string }[] = [
 ];
 
 export const LANDING_ROUTES = ["/", "/a", "/b", "other"] as const;
+
+/** A page view of a landing page. The thank-you page (incl. follow-up links) is not a visit. */
+export const isLandingView = (e: Pick<AnalyticsEvent, "name" | "page">) =>
+  e.name === "page_view" && e.page !== "/thanks";
 export const INTERACTIONS = [
   "cta_click",
   "booking_opened",
@@ -154,6 +168,8 @@ export function reportFromEvents(events: AnalyticsEvent[]): AnalyticsReport {
   interface Facts {
     experiment_id: string;
     first?: AnalyticsEvent;
+    /** Earliest landing page view. */
+    landed?: string;
     flags: Set<string>;
   }
   const visitors = new Map<string, Facts>();
@@ -169,7 +185,11 @@ export function reportFromEvents(events: AnalyticsEvent[]): AnalyticsReport {
       ((e.name === "page_view") === (f.first.name === "page_view") && before(e, f.first))
     )
       f.first = e;
-    if (e.name === "page_view") f.flags.add("visited");
+    if (isLandingView(e)) {
+      f.flags.add("visited");
+      if (!f.landed || e.created_at < f.landed) f.landed = e.created_at;
+    }
+    if (e.name !== "page_view") f.flags.add("not_only_views");
     if (isEngaging(e)) f.flags.add("engaged");
     if (e.name === "cta_click") f.flags.add("cta");
     if (e.name === "booking_opened") f.flags.add("opened");
@@ -195,6 +215,7 @@ export function reportFromEvents(events: AnalyticsEvent[]): AnalyticsReport {
           channel,
           source,
           visited: 0,
+          view_only: 0,
           engaged: 0,
           cta: 0,
           opened: 0,
@@ -209,6 +230,7 @@ export function reportFromEvents(events: AnalyticsEvent[]): AnalyticsReport {
         .get(key)!;
     const has = (flag: string) => (f.flags.has(flag) ? 1 : 0);
     row.visited += has("visited");
+    row.view_only += f.flags.has("visited") && !f.flags.has("not_only_views") ? 1 : 0;
     row.engaged += has("engaged");
     row.cta += has("cta");
     row.opened += has("opened");
@@ -298,6 +320,17 @@ export function reportFromEvents(events: AnalyticsEvent[]): AnalyticsReport {
     if (!v.engaged) row.bounced += 1;
   }
 
+  const hourCounts = new Map<string, HourRow>();
+  for (const f of visitors.values()) {
+    if (!f.landed) continue;
+    const hour = f.landed.slice(0, 13);
+    const key = `${f.experiment_id}\u0000${hour}`;
+    const row =
+      hourCounts.get(key) ??
+      hourCounts.set(key, { experiment_id: f.experiment_id, hour, visitors: 0 }).get(key)!;
+    row.visitors += 1;
+  }
+
   return {
     events_read: events.length,
     duplicates: onceRows - onceKeys.size,
@@ -306,6 +339,7 @@ export function reportFromEvents(events: AnalyticsEvent[]): AnalyticsReport {
     names,
     views: [...viewRows.values()],
     form_errors,
+    hours: [...hourCounts.values()],
   };
 }
 
@@ -320,6 +354,7 @@ export function canonicalReport(report: AnalyticsReport): AnalyticsReport {
     names: sort(report.names),
     views: sort(report.views),
     form_errors: sort(report.form_errors),
+    hours: sort(report.hours),
   };
 }
 
@@ -332,7 +367,7 @@ export interface ReportWindow {
 /** Paid-order joins look visitors up in chunks of this size (bounded IN lists). */
 export const PROFILE_CHUNK = 50;
 
-/** Device and viewport each visitor's page views reported (reference implementation). */
+/** Device and viewport of each visitor's first landing page view (reference implementation). */
 export function profilesFromEvents(
   events: AnalyticsEvent[],
   visitorIds: string[],
@@ -340,7 +375,7 @@ export function profilesFromEvents(
   const wanted = new Set(visitorIds);
   const found = new Map<string, AnalyticsEvent>();
   for (const e of events) {
-    if (e.name !== "page_view" || !wanted.has(e.visitor_id)) continue;
+    if (!isLandingView(e) || !wanted.has(e.visitor_id)) continue;
     const prior = found.get(e.visitor_id);
     if (
       !prior ||

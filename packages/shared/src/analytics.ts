@@ -349,6 +349,21 @@ export const MAX_EVENTS_PER_VIEW = 80;
 /** Most events in one `POST /api/events` batch. */
 export const MAX_EVENTS_PER_BATCH = 20;
 
+/**
+ * Page views the API accepts per (salted) IP address per UTC day. Generous for a household,
+ * office or mobile-carrier address on a local service's site; small next to what a script
+ * could otherwise add to one arm's visitor count.
+ */
+export const DAILY_VIEWS_PER_IP = 200;
+
+/**
+ * Last moment (exclusive, ISO) the API accepts schema v1 bodies from browser tabs opened before
+ * the v2 deploy. v1 bodies carry no deletion proof, so their rows can never be self-deleted;
+ * the window only needs to cover tabs left open across the deploy. Set it about two weeks
+ * after the production deploy (docs/analytics-events.md, "Versioning and migration from v1").
+ */
+export const LEGACY_V1_ACCEPTED_UNTIL = "2026-11-30T00:00:00.000Z";
+
 // ---------------------------------------------------------------------------
 // Normalising (browser) and validating (server).
 

@@ -56,7 +56,12 @@ export function adminRoutes(deps: Deps) {
     return c.json({ count: events.length, events });
   });
 
-  app.get("/summary", async (c) => c.json(await buildSummary(deps, c.req.query("since"))));
+  app.get("/summary", async (c) => {
+    const since = c.req.query("since");
+    if (since !== undefined && Number.isNaN(Date.parse(since)))
+      return c.json({ error: "invalid_request" }, 400);
+    return c.json(await buildSummary(deps, since && new Date(since).toISOString()));
+  });
 
   /**
    * Aggregate UX report: arms, acquisition, device, engagement and booking friction, with

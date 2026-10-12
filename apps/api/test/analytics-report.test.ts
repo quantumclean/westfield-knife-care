@@ -40,6 +40,7 @@ function dataset(count: number, visitors: number, seed = 7): AnalyticsEvent[] {
     const v = Math.floor(random() * visitors);
     const [name, props] = NAMES[Math.floor(random() * NAMES.length)]!;
     const mobile = v % 3 !== 0;
+    const thanks = name === "page_view" && v % 7 === 0;
     return {
       id: `ev-${String(i).padStart(7, "0")}`,
       created_at: new Date(start + Math.floor(random() * 19 * 86_400_000)).toISOString(),
@@ -50,10 +51,12 @@ function dataset(count: number, visitors: number, seed = 7): AnalyticsEvent[] {
       price_version: "x",
       source: v % 5 === 0 ? "instagram" : v % 2 ? "flyer-a" : "flyer-b",
       acquisition_channel: v % 5 === 0 ? "social" : "print",
-      page: v % 2 ? "/a" : "/b",
+      // Some page views are of the thank-you page, which never makes a visitor.
+      page: thanks ? "/thanks" : v % 2 ? "/a" : "/b",
       props: props(),
       v: 2,
-      view_id: `view-${v}-${Math.floor(random() * 3)}`,
+      // The thank-you page is its own page load, as in production.
+      view_id: thanks ? `thanks-${v}` : `view-${v}-${Math.floor(random() * 3)}`,
       device: mobile ? "mobile" : "desktop",
       viewport: mobile ? "xs" : "lg",
     } as AnalyticsEvent;
@@ -126,6 +129,8 @@ describe("analytics aggregates at scale", () => {
     expect(report.steps.length).toBeLessThanOrEqual(2 * 2 * 2 * 2 * 3);
     expect(rows).toBeLessThan(200);
     expect(report.steps.reduce((n, r) => n + r.visited, 0)).toBeLessThanOrEqual(20_000);
+    // Hourly new-visitor rows: at most arms × hours in the window, never per visitor.
+    expect(report.hours.length).toBeLessThanOrEqual(2 * 24 * 20);
     console.info(`analyticsReport over 200k events: ${Math.round(ms)} ms, ${rows} aggregate rows`);
     expect(ms).toBeLessThan(30_000);
 

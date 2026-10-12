@@ -33,20 +33,21 @@ export function PrivacyPanel() {
   return (
     <div class="privacy-panel">
       <p>
-        We count visits to make booking easier. We never record what you type into a form, your
-        name, contact details, address or payment details, and we use no advertising trackers.
+        We count visits to make booking easier. The counts never include what you type into a form,
+        your name, contact details, address or payment details, and we use no advertising trackers.
       </p>
       <h3>What we keep</h3>
       <ul>
         <li>
           Usage counts: the page and price you saw, how you found us (for example a flyer), the
           sections you reached, booking steps and the kind of any error. They are linked to a random
-          id stored in this browser, not to your name, and deleted after {EVENT_RETENTION_DAYS}{" "}
-          days.
+          id stored in this browser and deleted after {EVENT_RETENTION_DAYS} days.
         </li>
         <li>
           If you book or join the waitlist, the details you send are kept with that request so we
-          can collect and return your knives.
+          can collect and return your knives. This browser’s random id is saved with it too, so we
+          can tell which page or flyer led to the booking. That links your usage counts to your
+          booking.
         </li>
       </ul>
 
@@ -97,8 +98,10 @@ export function PrivacyPanel() {
       </div>
       {status === "deleted" && (
         <Notice tone="success">
-          Owned usage records were deleted and counting is off. Older records without a deletion key
-          and Google’s records cannot be erased here; contact us for help.
+          Done. Usage counts from this browser were deleted and counting is off here. We keep only a
+          note of its random id for {EVENT_RETENTION_DAYS} days, so delayed counts cannot come back.
+          Counts from before this browser had a deletion key, and Google’s records, cannot be erased
+          here; contact us for help.
         </Notice>
       )}
       {status === "unreachable" && (

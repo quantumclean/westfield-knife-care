@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ownerHashOf, type AnalyticsEvent, type Order } from "@wkc/shared";
-import { handlePagesApi } from "../src/cloudflare.ts";
+import { DAILY_VIEWS_PER_IP, handlePagesApi } from "../src/cloudflare.ts";
 import { D1Repository } from "../src/repo/d1.ts";
 import { MemoryRepository } from "../src/repo/memory.ts";
 import { canonicalReport } from "../src/repo/analytics-report.ts";
@@ -265,6 +265,66 @@ describe("privacy review: API and real D1 regressions", () => {
     )!;
     expect([step.device, step.viewport, step.source]).toEqual(["mobile", "xs", "flyer-a"]);
   });
+  it("agrees in SQL and reference on refunds and on which paid orders have a counted visit", async () => {
+    const db = sqliteD1();
+    const repo = new D1Repository(db);
+    const memory = new MemoryRepository();
+    const at = new Date(Date.now() - 1000).toISOString();
+    const events = [
+      stored(810, { created_at: new Date(Date.now() - 5000).toISOString() }),
+      // Visitor 9 was only ever seen on the thank-you page: not a counted visit.
+      stored(811, {
+        visitor_id: uuid(9),
+        page: "/thanks",
+        created_at: new Date(Date.now() - 4000).toISOString(),
+      }),
+    ];
+    for (const e of events) e.view_id = e.id;
+    await repo.putEvents(events);
+    await memory.putEvents(events);
+    const order = (id: string, extra: Record<string, unknown>) =>
+      ({
+        ...validOrder,
+        id,
+        created_at: at,
+        updated_at: at,
+        quote: { total_cents: 3900 },
+        payment_status: "paid",
+        repeat_intent: "unknown",
+        ...extra,
+      }) as unknown as Order;
+    for (const o of [
+      order("order-visit", { visitor_id: uuid(2) }),
+      order("order-refunded", {
+        visitor_id: uuid(2),
+        payment_status: "refunded",
+        refunded_amount_cents: 3900,
+      }),
+      order("order-partial", { visitor_id: uuid(9), refunded_amount_cents: 900 }),
+      order("order-unmeasured", {}),
+    ]) {
+      await repo.putOrder({ ...o });
+      await memory.putOrder({ ...o });
+    }
+    const window = {
+      since: new Date(Date.now() - 86_400_000).toISOString(),
+      until: new Date(Date.now() + 86_400_000).toISOString(),
+    };
+    const commerce = await repo.commerceReport(window);
+    expect(commerce).toEqual(await memory.commerceReport(window));
+    expect(commerce[0]).toMatchObject({
+      orders_created: 4,
+      orders_paid: 3,
+      orders_refunded: 1,
+      paid_with_visit: 1,
+      revenue_cents: 3900 + 3000 + 3900,
+      revenue_with_visit_cents: 3900,
+    });
+    const report = await repo.analyticsReport(window);
+    expect(canonicalReport(report)).toEqual(canonicalReport(await memory.analyticsReport(window)));
+    expect(report.steps.reduce((n, r) => n + r.visited, 0)).toBe(1);
+    expect(report.steps.reduce((n, r) => n + r.view_only, 0)).toBe(1);
+  });
   it("counts batch units for rate exhaustion and allows independent customers on a shared IP", async () => {
     const env = { DB: sqliteD1(), STAGE: "staging", RATE_LIMIT_SALT: "synthetic-salt" };
     const send = (view: number) =>
@@ -283,6 +343,51 @@ describe("privacy review: API and real D1 regressions", () => {
     for (let i = 0; i < 60; i++) expect((await send(i)).status).toBe(204);
     expect((await send(61)).status).toBe(429);
     expect((await send(62)).headers.get("Retry-After")).toBe("60");
+  });
+  it("caps new page views per IP per day, so one address cannot mint unbounded visitors", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const day = Date.parse("2026-10-12T00:00:00Z");
+      const env = { DB: sqliteD1(), STAGE: "staging", RATE_LIMIT_SALT: "synthetic-salt" };
+      const send = (i: number, name = "page_view", ip = "192.0.2.20") =>
+        handlePagesApi(
+          new Request("https://preview.example.test/api/events", {
+            method: "POST",
+            headers: { "content-type": "application/json", "CF-Connecting-IP": ip },
+            body: JSON.stringify({
+              events: [
+                event(5000 + i, {
+                  name,
+                  props: name === "section_view" ? { section: "pricing" } : {},
+                  view_id: uuid(6000 + i),
+                  visitor_id: uuid(7000 + i),
+                }),
+              ],
+            }),
+          }),
+          env,
+        );
+      // Spread over minutes so only the daily budget, not the per-minute one, is in play.
+      for (let i = 0; i < DAILY_VIEWS_PER_IP; i++) {
+        vi.setSystemTime(day + Math.floor(i / 100) * 60_000);
+        expect((await send(i)).status).toBe(204);
+      }
+      vi.setSystemTime(day + 10 * 60_000);
+      expect((await send(DAILY_VIEWS_PER_IP)).status).toBe(429);
+      // Other events, other addresses and the next day are unaffected.
+      expect((await send(DAILY_VIEWS_PER_IP + 1, "section_view")).status).toBe(204);
+      expect((await send(DAILY_VIEWS_PER_IP + 2, "page_view", "192.0.2.21")).status).toBe(204);
+      vi.setSystemTime(day + 86_400_000 + 60_000);
+      expect((await send(DAILY_VIEWS_PER_IP + 3)).status).toBe(204);
+      const views = env.DB.raw
+        .prepare(
+          "SELECT COUNT(*) AS n FROM analytics_events WHERE json_extract(data,'$.name')='page_view'",
+        )
+        .get() as { n: number };
+      expect(views.n).toBe(DAILY_VIEWS_PER_IP + 2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it("migration 0005 is idempotent and scheduled cleanup physically removes expired events, proofs and counters", async () => {
     const db = sqliteD1();

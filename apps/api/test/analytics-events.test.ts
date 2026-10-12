@@ -1,10 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import { ownerHashOf, type AnalyticsEvent } from "@wkc/shared";
+import { LEGACY_V1_ACCEPTED_UNTIL, ownerHashOf, type AnalyticsEvent } from "@wkc/shared";
 import { handlePagesApi } from "../src/cloudflare.ts";
 import { D1Repository } from "../src/repo/d1.ts";
 import { BODY_LIMITS } from "../src/services/request-body.ts";
-import { json, makeDeps, readJson } from "./helpers.ts";
+import cleanup from "../../../workers/cleanup/src/index.ts";
+import { ADMIN_KEY, json, makeDeps, readJson } from "./helpers.ts";
 import { sqliteD1 } from "./sqlite-d1.ts";
 
 let seq = 0;
@@ -119,6 +120,22 @@ describe("POST /api/events (schema v2)", () => {
     const [stored] = await deps.repo.listEvents();
     expect(stored).toMatchObject({ page: "/b", device: "unknown", props: { total_cents: 4900 } });
     expect(JSON.stringify(stored)).not.toContain("order-abc-123");
+  });
+
+  it("stops accepting v1 bodies (no deletion proof) after the legacy window", async () => {
+    const { app, deps, clock } = makeDeps();
+    clock.now = new Date(LEGACY_V1_ACCEPTED_UNTIL);
+    const res = await app.request(
+      "/api/events",
+      json("POST", {
+        experiment_id: "experiment-002",
+        visitor_id: "00000000-0000-4000-8000-00000000000c",
+        name: "page_view",
+        page: "/b",
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(await deps.repo.listEvents()).toHaveLength(0);
   });
 
   it("never logs event bodies", async () => {
@@ -345,6 +362,51 @@ describe("D1 analytics storage (SQLite with the real migrations)", () => {
       expires_at: number;
     };
     expect(row.expires_at).toBe(createdSeconds + 90 * 86_400);
+  });
+
+  it("migration 0003 keeps a row with an unparseable created_at instead of failing", () => {
+    const db = sqliteD1("0002_rate_limits.sql");
+    const insert = db.raw.prepare(
+      "INSERT INTO analytics_events (id, created_at, experiment_id, expires_at, data) VALUES (?, ?, ?, ?, ?)",
+    );
+    insert.run("ev-bad", "not a date", "experiment-001", 1_900_000_000, "{}");
+    insert.run("ev-good", "2026-09-24T15:00:00.000Z", "experiment-001", 1_900_000_000, "{}");
+    const migration = new URL("../../../migrations/0003_analytics_retention.sql", import.meta.url);
+    db.raw.exec(readFileSync(migration, "utf8"));
+    const rows = db.raw
+      .prepare("SELECT id, expires_at FROM analytics_events ORDER BY id")
+      .all() as { id: string; expires_at: number }[];
+    expect(rows).toEqual([
+      { id: "ev-bad", expires_at: 1_900_000_000 },
+      {
+        id: "ev-good",
+        expires_at: Math.floor(Date.parse("2026-09-24T15:00:00.000Z") / 1000) + 90 * 86_400,
+      },
+    ]);
+  });
+});
+
+describe("scheduled cleanup", () => {
+  it("still cleans the other tables when one is missing, and reports the failure", async () => {
+    const db = sqliteD1("0004_analytics_visitor_index.sql"); // before 0005: no tombstone table
+    db.raw.exec(
+      "INSERT INTO analytics_events (id, created_at, experiment_id, expires_at, data) VALUES ('ev-old', '2026-01-01T00:00:00Z', 'experiment-001', 0, '{}');" +
+        "INSERT INTO api_rate_limits VALUES ('bucket', 1, 0);",
+    );
+    await expect(cleanup.scheduled({}, { DB: db })).rejects.toThrow(/analytics_deletions/);
+    for (const table of ["analytics_events", "api_rate_limits"])
+      expect((db.raw.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n).toBe(
+        0,
+      );
+  });
+});
+
+describe("GET /api/admin/summary", () => {
+  it("rejects an unparseable since instead of comparing it as text", async () => {
+    const { app } = makeDeps();
+    const admin = { headers: { "x-admin-key": ADMIN_KEY } };
+    expect((await app.request("/api/admin/summary?since=yesterday", admin)).status).toBe(400);
+    expect((await app.request("/api/admin/summary?since=2026-10-01", admin)).status).toBe(200);
   });
 });
 

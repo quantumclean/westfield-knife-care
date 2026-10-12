@@ -1,4 +1,5 @@
 import {
+  DAILY_VIEWS_PER_IP,
   EXPERIMENTS,
   FLYER_ROUTES,
   MIN_REPORT_COUNT,
@@ -87,11 +88,34 @@ export interface ArmInsights {
   };
   outcomes: {
     orders_created: number;
+    /** Stripe-confirmed and not fully refunded. The primary, hard-to-fake decision metric. */
     orders_paid: number;
+    /** Fully refunded orders: reported, never counted as paid. */
+    orders_refunded: number;
+    /** Net of refunds. */
     revenue_cents: number;
+    /** Paid orders whose browser has a counted landing visit in this arm and window. */
+    paid_with_measured_visit: number;
+    /** paid_with_measured_visit / visitors: numerator and denominator from one population. */
     paid_per_visitor: number | null;
+    /** Net revenue of those same measured orders / visitors. */
     revenue_per_visitor_cents: number | null;
     waitlist_signups: number;
+  };
+  /**
+   * Signals that visitor-based rates may be distorted (scripted traffic, blocked beacons).
+   * When `warnings` is non-empty, compare arms on paid orders and revenue, not per-visitor rates.
+   */
+  data_quality: {
+    visitors: number;
+    /** Visitors who sent nothing but page views. */
+    page_view_only: number;
+    page_view_only_share: number | null;
+    /** UTC hours with at least one new visitor. */
+    active_hours: number;
+    peak_hour_visitors: number;
+    median_hour_visitors: number;
+    warnings: string[];
   };
   by_channel: SegmentRow[];
   by_source: SegmentRow[];
@@ -208,6 +232,48 @@ function dropOffs(
     .slice(0, 3);
 }
 
+/** Share of page-view-only visitors above which visitor rates are flagged. */
+export const VIEW_ONLY_WARN_SHARE = 0.5;
+/** An hour with this many new visitors, and this multiple of the median hour, is a spike. */
+export const SPIKE_MIN_VISITORS = 20;
+export const SPIKE_MULTIPLE = 10;
+
+function dataQuality(
+  rows: StepRow[],
+  hours: number[],
+  minCount: number,
+): ArmInsights["data_quality"] {
+  const visitors = rows.reduce((n, r) => n + r.visited, 0);
+  const viewOnly = rows.reduce((n, r) => n + r.view_only, 0);
+  const sorted = [...hours].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length
+    ? sorted.length % 2
+      ? sorted[mid]!
+      : (sorted[mid - 1]! + sorted[mid]!) / 2
+    : 0;
+  const peak = sorted.at(-1) ?? 0;
+  const share = rate(viewOnly, visitors);
+  const warnings: string[] = [];
+  if (visitors >= minCount && share !== null && share > VIEW_ONLY_WARN_SHARE)
+    warnings.push(
+      `${pct(share)} of visitors sent nothing but a page view (scripted traffic or blocked beacons).`,
+    );
+  if (peak >= SPIKE_MIN_VISITORS && peak >= SPIKE_MULTIPLE * Math.max(1, median))
+    warnings.push(
+      `One hour brought ${peak} new visitors, over ${SPIKE_MULTIPLE}x the median hour (${median}).`,
+    );
+  return {
+    visitors,
+    page_view_only: viewOnly,
+    page_view_only_share: share,
+    active_hours: hours.length,
+    peak_hour_visitors: peak,
+    median_hour_visitors: median,
+    warnings,
+  };
+}
+
 function armInsights(
   experiment: (typeof EXPERIMENTS)[number],
   report: AnalyticsReport,
@@ -293,11 +359,20 @@ function armInsights(
     outcomes: {
       orders_created: commerce.orders_created,
       orders_paid: commerce.orders_paid,
+      orders_refunded: commerce.orders_refunded,
       revenue_cents: revenue,
-      paid_per_visitor: rate(commerce.orders_paid, visitors),
-      revenue_per_visitor_cents: visitors ? Math.round(revenue / visitors) : null,
+      paid_with_measured_visit: commerce.paid_with_visit,
+      paid_per_visitor: rate(commerce.paid_with_visit, visitors),
+      revenue_per_visitor_cents: visitors
+        ? Math.round(commerce.revenue_with_visit_cents / visitors)
+        : null,
       waitlist_signups: commerce.waitlist_signups,
     },
+    data_quality: dataQuality(
+      rows,
+      report.hours.filter((h) => h.experiment_id === id).map((h) => h.visitors),
+      minCount,
+    ),
     by_channel: segmentRows(
       rows,
       "channel",
@@ -343,9 +418,11 @@ export async function buildInsights(
       ),
     ),
     notes: [
-      "Browser telemetry is untrusted: bots can fabricate ids and steps. Visitor, UX and conversion estimates are not verified people or a strictly ordered cohort funnel.",
-      "Visitors are unique random browser ids; one person on two devices counts twice. Orders can exceed visitors when counting is disabled or events expire.",
-      "Paid orders and revenue come from Stripe-confirmed orders, never from browser events.",
+      "Decide between arms on paid orders and net revenue (Stripe-confirmed, not fully refunded): they cannot be inflated without paying. Visitor-based rates are diagnostics, and only when data_quality has no warnings.",
+      `Browser telemetry is untrusted: bots can fabricate ids and steps (each IP address is limited to ${DAILY_VIEWS_PER_IP} page views a day). Visitor, UX and conversion estimates are not verified people or a strictly ordered cohort funnel.`,
+      "Visitors are unique random browser ids with a landing-page view (the thank-you page and follow-up links do not count); one person on two devices counts twice.",
+      "Paid / visitor and revenue / visitor use only paid orders whose browser has a counted visit, so both sides come from the same measured population. Total paid orders can be higher (counting off, deleted or expired telemetry).",
+      "Paid orders and revenue come from Stripe-confirmed orders, never from browser events. Fully refunded orders are listed separately and never counted as paid.",
       "Paid device/viewport use the first retained page view in the same report window and arm, no later than order creation. Unknown includes missing, opted-out and expired telemetry.",
       `Breakdown rows under ${minCount} visitors are suppressed (null).`,
       "Events are kept for 90 days; compare arms over the same window.",
@@ -391,22 +468,46 @@ export function renderInsightsMarkdown(insights: Insights): string {
     table(
       ["", ...insights.arms.map((a) => `${a.experiment_id}${a.flyer ? ` (${a.flyer})` : ""}`)],
       [
+        ["paid orders", ...insights.arms.map((a) => a.outcomes.orders_paid)],
+        ["revenue (net)", ...insights.arms.map((a) => money(a.outcomes.revenue_cents))],
+        ["fully refunded", ...insights.arms.map((a) => a.outcomes.orders_refunded)],
         ["visitors", ...insights.arms.map((a) => a.funnel.visited)],
         ["bounce rate", ...insights.arms.map((a) => pct(a.engagement.bounce_rate))],
         ...FUNNEL.slice(2).map((step) => [step, ...insights.arms.map((a) => a.funnel[step])]),
+        [
+          "paid with a counted visit",
+          ...insights.arms.map((a) => a.outcomes.paid_with_measured_visit),
+        ],
         ["paid / visitor", ...insights.arms.map((a) => pct(a.outcomes.paid_per_visitor))],
-        ["revenue", ...insights.arms.map((a) => money(a.outcomes.revenue_cents))],
         [
           "revenue / visitor",
           ...insights.arms.map((a) => money(a.outcomes.revenue_per_visitor_cents)),
         ],
         ["waitlist signups", ...insights.arms.map((a) => a.outcomes.waitlist_signups)],
+        [
+          "page-view-only visitors",
+          ...insights.arms.map((a) => pct(a.data_quality.page_view_only_share)),
+        ],
+        [
+          "peak / median hour",
+          ...insights.arms.map(
+            (a) => `${a.data_quality.peak_hour_visitors} / ${a.data_quality.median_hour_visitors}`,
+          ),
+        ],
       ],
     ),
     "",
   ];
   for (const arm of insights.arms) {
     out.push(`## ${arm.experiment_id}: ${arm.name}`, "");
+    if (arm.data_quality.warnings.length) {
+      out.push(
+        "**Data quality: compare this arm on paid orders and revenue, not per-visitor rates.**",
+        "",
+        ...arm.data_quality.warnings.map((w) => `- ${w}`),
+        "",
+      );
+    }
     if (arm.drop_offs.length) {
       out.push("Biggest drop-offs:", "");
       for (const d of arm.drop_offs) {

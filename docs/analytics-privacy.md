@@ -46,21 +46,31 @@ Browser ──(batched, allowlisted events)──▶ POST /api/events ──▶ 
 | Error kind and area, web-vital ratings                        | Error messages or stack traces                    |
 | Address-suggestion outcome (shown, chosen, fallback)          | Apple Maps queries, results or selected addresses |
 
-The rate limiter stores a salted SHA-256 of the connecting IP per minute bucket for about
-two minutes (`migrations/0002_rate_limits.sql`); it never stores the IP itself.
+**Linked to bookings.** The random browser id is pseudonymous, not anonymous. When someone
+books or joins the waitlist, the same id is stored with that request (next to the name,
+contact details and address the customer entered), so the owner can tell which page or
+flyer led to a booking, and `/api/admin/insights` joins paid orders to their first visit.
+For customers, analytics events are therefore linkable to a person and should be treated
+as personal data (for example under CCPA/CPRA). The privacy panel says so. Reports output
+only aggregates; the raw admin export (`/api/admin/events`) does contain browser ids.
+
+The rate limiter stores a salted SHA-256 of the connecting IP per bucket (`migrations/0002_rate_limits.sql`):
+per-minute buckets for about two minutes, and the daily page-view budget for about two
+days. It never stores the IP itself.
 
 ## Retention and deletion
 
-| data                     | where                   | kept                         | deleted by                                                                |
-| ------------------------ | ----------------------- | ---------------------------- | ------------------------------------------------------------------------- |
-| Analytics events         | D1 `analytics_events`   | 90 days (`expires_at`)       | Daily cleanup Worker; hidden from reads once expired; visitor self-delete |
-| Rate-limit buckets       | D1 `api_rate_limits`    | about 2 minutes              | Daily cleanup Worker                                                      |
-| Privacy choices          | Browser `wkc.privacy`   | until the visitor clears it  | The visitor                                                               |
-| Browser id, attribution  | Browser localStorage    | until cleared or self-delete | "Delete my analytics data", or clearing site data                         |
-| Deletion key             | Browser localStorage    | until cleared or self-delete | "Delete my analytics data"; events store only its SHA-256 (`owner`)       |
-| Orders, waitlist entries | D1 `orders`, `waitlist` | owner policy (not automated) | Owner, on request to the support address                                  |
-| Payments                 | Stripe                  | Stripe's policy              | Stripe dashboard                                                          |
-| GA4 (if enabled)         | Google                  | set in the GA4 property      | GA4 data-retention setting (choose 2 months) and its user-deletion tool   |
+| data                     | where                    | kept                                                 | deleted by                                                                |
+| ------------------------ | ------------------------ | ---------------------------------------------------- | ------------------------------------------------------------------------- |
+| Analytics events         | D1 `analytics_events`    | 90 days (`expires_at`)                               | Daily cleanup Worker; hidden from reads once expired; visitor self-delete |
+| Deletion tombstones      | D1 `analytics_deletions` | 90 days after a self-delete                          | Daily cleanup Worker (only the browser id and key hash, no events)        |
+| Rate-limit buckets       | D1 `api_rate_limits`     | about 2 minutes; daily page-view budget about 2 days | Daily cleanup Worker                                                      |
+| Privacy choices          | Browser `wkc.privacy`    | until the visitor clears it                          | The visitor                                                               |
+| Browser id, attribution  | Browser localStorage     | until cleared or self-delete                         | "Delete my analytics data", or clearing site data                         |
+| Deletion key             | Browser localStorage     | until cleared or self-delete                         | "Delete my analytics data"; events store only its SHA-256 (`owner`)       |
+| Orders, waitlist entries | D1 `orders`, `waitlist`  | owner policy (not automated)                         | Owner, on request to the support address                                  |
+| Payments                 | Stripe                   | Stripe's policy                                      | Stripe dashboard                                                          |
+| GA4 (if enabled)         | Google                   | set in the GA4 property                              | GA4 data-retention setting (choose 2 months) and its user-deletion tool   |
 
 - **Self-delete, with proof of possession.**
   - Each browser creates a random 256-bit deletion key on first use (`wkc.analytics_key`).
@@ -85,16 +95,19 @@ two minutes (`migrations/0002_rate_limits.sql`); it never stores the IP itself.
     expire after 90 days and are physically removed by the cleanup Worker.
   - Limits: events recorded before this release or through the legacy v1 protocol
     have no `owner` and can't be self-deleted. They expire within 90 days, or the owner
-    deletes them on request. Clearing site data loses the key, and with it self-service
+    deletes them on request. The API stops accepting v1 bodies at
+    `LEGACY_V1_ACCEPTED_UNTIL` (set it about two weeks after the production deploy). Clearing site data loses the key, and with it self-service
     deletion of earlier events. New v2 events require an owner hash; browsers without
     Web Crypto do not send new analytics events. The panel distinguishes owned records
     from legacy/Google records it cannot erase.
 - **Retention change.** v1 wrote a 180-day expiry. Code from this release writes 90 days.
   Existing rows are brought down to 90 days by `migrations/0003_analytics_retention.sql`,
   which the owner applies (staging first). See `docs/d1-retention-cleanup.md`.
-- **Cleanup.** D1 has no TTL. `workers/cleanup` deletes expired rows daily. It is
-  configured for staging only today; production needs the same Worker bound to the
-  production database before launch.
+- **Cleanup.** D1 has no TTL. `workers/cleanup` deletes expired rows daily, each table on
+  its own (a failure on one is reported and does not skip the others). It is configured
+  for staging only today. **Production needs the same Worker bound to the production
+  database before launch**; until it runs there, expired rows are hidden from reports but
+  still stored, and the panel's "deleted after 90 days" is not true in production.
 
 ## Consent and browser signals
 
@@ -209,7 +222,9 @@ before any production use):
 ## Reporting at scale
 
 - Reports never load raw events into the Worker. `/admin/summary` and `/admin/insights`
-  call `repo.analyticsReport`, which on D1 runs six `GROUP BY` queries over the window.
+  call `repo.analyticsReport`, which on D1 runs seven `GROUP BY` queries over the window
+  (the seventh counts new landing visitors per UTC hour for the data-quality check; at
+  most arms × hours in the window rows).
   Window filters apply before aggregation; window functions choose coherent first page-view dimensions.
 - The Worker receives only aggregate rows. Their number is bounded by arms × device ×
   viewport × channel × source and by the allowlisted enums, not by traffic. The 200,000-event
@@ -243,10 +258,15 @@ Remaining limits:
 6. **Distinct visitors per segment.** All dimensions come from one earliest page view in
    the report window and arm (first event fallback), with timestamp/id ties resolved together.
 7. **Untrusted telemetry.** Public requests can still fabricate random ids and UX actions.
-   Server budgets and fixed registries bound amplification and result cardinality; they do
-   not prove human identity. UX counts and visitor-based rates are estimates, not ordered
-   cohort conversions. Paid-order counts and net revenue are server-state totals and may
-   exceed measured visitors (opt-out, multiple orders, expiration).
+   Server budgets (120 requests and 1,200 events a minute, and 200 page views a day, per
+   IP) and fixed registries bound amplification and result cardinality; they do not prove
+   human identity, and many addresses together can still add visitors. Therefore:
+   - experiment decisions use paid orders and net revenue (Stripe-confirmed, fully
+     refunded orders excluded), which cannot be faked without paying;
+   - per-visitor rates use only paid orders with a counted visit, so both sides come from
+     the same measured population, and visitors exclude `/thanks`-only browsers;
+   - each arm carries `data_quality` (page-view-only share, hourly spikes) with warnings
+     that tell the reader to ignore visitor rates for that arm.
 
 ## Costs
 
@@ -260,10 +280,12 @@ GA4 standard is optional and has its own quotas; nothing enables it automaticall
 ## Registered context and Google rollout
 
 Analytics sources must appear in `ANALYTICS_SOURCES` in `packages/shared/src/analytics.ts`.
-Unknown tags (including names, streets and ZIPs) collapse to `other`, including historical
-rows and paid-order source splits. Register reviewed non-personal campaign ids before use;
-operational order attribution can retain its existing validation, but analytics never exports
-an arbitrary tag. Visitor ids must match the random UUID / legacy browser-id formats.
+Unknown tags (including names, streets and ZIPs) collapse to `other` in every analytics
+event and report, including historical rows and paid-order source splits. Register reviewed
+non-personal campaign ids before use. Orders and waitlist entries keep the tag as sent,
+under the existing format validation (`sourceSchema`), so an unregistered campaign is not
+lost from the business record; analytics never exports an arbitrary tag. Visitor ids must
+match the random UUID / fallback browser-id formats.
 Google URL parameters are limited to registered sources, experiment ids and channel enums;
 referrers are limited to known provider origins. No visitor id or ownership proof is sent.
 

@@ -23,26 +23,46 @@ Parameters:
 
 ## The six questions
 
-| question                                              | where to look                                                                                                        |
-| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Where did visitors come from?                         | `by_channel` and `by_source` per arm (first touch: flyer, social, search…)                                           |
-| Did they engage?                                      | `engagement.bounce_rate`, `section_reach`, `scroll_depth`, `video`, `faq_openers`; `funnel.engaged`                  |
-| Where do booking steps fail?                          | `drop_offs` (largest losses, with the weakest device), `booking.closed_at`, `booking.form_error_fields` and `_kinds` |
-| Does address autocomplete help?                       | `booking.address_suggestions` and `submit_rate_with_suggestion` vs `_without_` (needs PR #28 and Maps enabled)       |
-| Do mobile visitors struggle more?                     | `by_device` and `by_viewport` (opened, submitted, paid, paid / visitor); `worst_device` on each drop-off             |
-| Which experiment increases **confirmed paid** orders? | `outcomes.orders_paid`, `paid_per_visitor` and `revenue_per_visitor_cents` per arm, plus the side-by-side table      |
+| question                                              | where to look                                                                                                           |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Where did visitors come from?                         | `by_channel` and `by_source` per arm (first touch: flyer, social, search…)                                              |
+| Did they engage?                                      | `engagement.bounce_rate`, `section_reach`, `scroll_depth`, `video`, `faq_openers`; `funnel.engaged`                     |
+| Where do booking steps fail?                          | `drop_offs` (largest losses, with the weakest device), `booking.closed_at`, `booking.form_error_fields` and `_kinds`    |
+| Does address autocomplete help?                       | `booking.address_suggestions` and `submit_rate_with_suggestion` vs `_without_` (needs PR #28 and Maps enabled)          |
+| Do mobile visitors struggle more?                     | `by_device` and `by_viewport` (opened, submitted, paid, paid / visitor); `worst_device` on each drop-off                |
+| Which experiment increases **confirmed paid** orders? | `outcomes.orders_paid` and `revenue_cents` per arm first; `paid_per_visitor` only when `data_quality.warnings` is empty |
 
 ## How the numbers are counted
 
-- **Visitors** are unique random browser ids. One person on a phone and a laptop counts
+- **Visitors** are unique random browser ids with a page view of a landing page (`/`, `/a`,
+  `/b`). The thank-you page does not count, so a customer opening the follow-up feedback
+  link on another device is not a new visitor. One person on a phone and a laptop counts
   twice; a visitor who cleared site data or used "Delete my analytics data" starts again.
 - **Funnel**, in unique visitors per step:
   `visited → engaged → cta_click → booking_opened → booking_details → booking_submitted → checkout_started → paid`.
   - `engaged` means the visitor interacted (a button, the FAQ, the film), scrolled at
     least 50%, or stayed 10 seconds or more.
-  - `booking_details` means they started entering contact details.
-  - `paid` counts orders with payment status paid (including later refunds, as in
-    `/summary`), set by Stripe's webhook.
+  - `booking_details` means the booking sheet showed step 2 (contact details).
+  - `paid` counts orders with payment status paid, set by Stripe's webhook. A fully
+    refunded order is **not** paid; it is counted in `outcomes.orders_refunded`. A
+    partially refunded order stays paid, with the refund taken off revenue.
+- **Outcomes.**
+  - `orders_paid` and `revenue_cents` (net) are every paid order in the window. They are
+    the decision metrics: nobody can inflate them without paying.
+  - `paid_with_measured_visit` is the subset whose browser has a counted visit in the same
+    arm and window, before the order. `paid_per_visitor` and `revenue_per_visitor_cents`
+    use only that subset, so numerator and denominator come from the same measured
+    population. Orders from browsers with counting off, deleted or expired data are in
+    `orders_paid` but not in the rates.
+- **Data quality** (`data_quality` per arm):
+  - `page_view_only` / `page_view_only_share`: visitors who sent nothing but page views.
+    Real visits almost always add a section view, a vital or an engagement time, so a
+    high share points at scripts or blocked beacons.
+  - `active_hours`, `peak_hour_visitors`, `median_hour_visitors`: new visitors per UTC hour.
+  - `warnings` is non-empty when over half the visitors are page-view-only, or when one
+    hour brought 20+ new visitors and over 10× the median hour. Then compare that arm on
+    paid orders and revenue only. The API also accepts at most 200 page views per IP
+    address per day (`DAILY_VIEWS_PER_IP`), which bounds what one address can add.
 - **Bounce rate** is the share of landing page loads with no interaction, under 50%
   scroll, and under 10 seconds visible (or no time recorded).
 - **Duplicates.** Once-per-view events are de-duplicated again in the report, and the count
@@ -78,10 +98,12 @@ Parameters:
 ## Interpretation and review requirements
 
 Browser visitors/steps are untrusted estimates, not verified people or a sequential cohort
-funnel. Bots may invent ids despite server budgets. Orders and net revenue are confirmed
-server-state totals over **order creation time**, without the old 5,000-record cap; they can
-exceed measured visitors. Refunded orders remain paid outcomes, with refunds deducted from
-revenue. Window filters also apply to waitlist signups. Device/viewport use one first retained
+funnel. Bots may invent ids despite server budgets (per-IP limits slow one address; many
+addresses can still add visitors), which is why the decision metrics are paid orders and net
+revenue and why `data_quality` exists. Orders and net revenue are confirmed server-state
+totals over **order creation time**, without the old 5,000-record cap; they can exceed
+measured visitors. Fully refunded orders are reported separately and never counted as
+paid. Window filters also apply to waitlist signups. Device/viewport use one first retained
 page view in the same arm/window, before order creation; missing telemetry is `unknown`.
 Source labels are registered ids even for historical/paid data. Result cardinality is finite;
 D1 scan cost is not independent of traffic. See analytics-privacy.md for migration 0005,

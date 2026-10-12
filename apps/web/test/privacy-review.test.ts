@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeSession, installBrowser } from "./fake-browser.ts";
 import { sanitizePageUrl, sanitizeReferrer } from "../src/lib/privacy-url.ts";
@@ -115,5 +117,55 @@ describe("privacy review browser regressions", () => {
     consent.saveChoices({ google: "granted" });
     expect(consent.googleAllowed()).toBe(false);
     expect(browser.scripts).toHaveLength(0);
+  });
+  it("keeps an unregistered campaign tag on the order, while analytics reports it as other", async () => {
+    const { browser, analytics, session } = await setup();
+    session.attribution.source = "flyer-batch-7";
+    const { sessionContext } = await import("../src/lib/session.ts");
+    expect(sessionContext(session).source).toBe("flyer-batch-7");
+    analytics.track(analytics.EVENTS.page_view);
+    analytics.flush();
+    await browser.drain();
+    expect(browser.events()[0]!.source).toBe("other");
+  });
+  it("fallback ids (no crypto.randomUUID) always have the exact format the API accepts", async () => {
+    const { randomBase36, timeBase36 } = await import("../src/lib/session.ts");
+    const { VISITOR_ID_PATTERN, parseEventPayload } = await import("@wkc/shared");
+    for (let i = 0; i < 2000; i++) {
+      expect(randomBase36(10)).toMatch(/^[a-z0-9]{10}$/);
+      expect(`v-${timeBase36()}-${randomBase36(8)}`).toMatch(VISITOR_ID_PATTERN);
+    }
+    // Without crypto at all, Math.random still yields full-length ids.
+    vi.stubGlobal("crypto", {});
+    for (let i = 0; i < 2000; i++) expect(randomBase36(10)).toMatch(/^[a-z0-9]{10}$/);
+    vi.unstubAllGlobals();
+
+    const real = globalThis.crypto;
+    const { browser, analytics } = await setup();
+    vi.stubGlobal("crypto", {
+      getRandomValues: real.getRandomValues.bind(real),
+      subtle: real.subtle,
+    });
+    for (let i = 0; i < 15; i++)
+      analytics.track(analytics.EVENTS.cta_click, { cta: "sharpen", location: "hero" });
+    analytics.flush();
+    await browser.drain();
+    const batches = browser.requests
+      .filter((r) => r.url.endsWith("/events"))
+      .map((r) => JSON.parse(r.body));
+    expect(batches.length).toBeGreaterThan(0);
+    for (const batch of batches) {
+      expect(parseEventPayload(batch).ok).toBe(true);
+      for (const e of batch.events) expect(e.event_id).toMatch(/^[a-z0-9]{8}-[a-z0-9]{10}$/);
+    }
+  });
+  it("the privacy notice does not claim usage counts are unlinked from a booking", () => {
+    const panel = readFileSync(
+      resolve(import.meta.dirname, "../src/sections/PrivacyPanel.tsx"),
+      "utf8",
+    ).replace(/\s+/g, " ");
+    expect(panel).not.toMatch(/not to your name/i);
+    expect(panel).toContain("random id is saved with it too");
+    expect(panel).toContain("links your usage counts to your booking");
   });
 });

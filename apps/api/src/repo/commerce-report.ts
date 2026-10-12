@@ -12,8 +12,15 @@ import { profilesFromEvents, type ReportWindow } from "./analytics-report.ts";
 export interface CommerceArm {
   experiment_id: string;
   orders_created: number;
+  /** Paid and not fully refunded (partial refunds stay paid, net of the refund). */
   orders_paid: number;
+  /** Fully refunded orders, reported apart and never counted as paid. */
+  orders_refunded: number;
+  /** Paid orders whose browser has a landing page view in the same arm and window. */
+  paid_with_visit: number;
   revenue_cents: number;
+  /** Net revenue of the `paid_with_visit` orders. */
+  revenue_with_visit_cents: number;
   knives: number;
   repeat_customers: number;
   repeat_purchases: number;
@@ -31,7 +38,10 @@ export function emptyCommerce(experiment_id: string): CommerceArm {
     experiment_id,
     orders_created: 0,
     orders_paid: 0,
+    orders_refunded: 0,
+    paid_with_visit: 0,
     revenue_cents: 0,
+    revenue_with_visit_cents: 0,
     knives: 0,
     repeat_customers: 0,
     repeat_purchases: 0,
@@ -45,8 +55,7 @@ export function emptyCommerce(experiment_id: string): CommerceArm {
     by_viewport: {},
   };
 }
-export const paidOrder = (o: Order) =>
-  o.payment_status === "paid" || o.payment_status === "refunded";
+export const paidOrder = (o: Order) => o.payment_status === "paid";
 export const netRevenue = (o: Order) =>
   Math.max(
     0,
@@ -74,6 +83,7 @@ export function commerceFromRecords(
     for (const o of orders) {
       if (o.experiment_id !== exp.id || !inWindow(o.created_at)) continue;
       arm.orders_created++;
+      if (o.payment_status === "refunded") arm.orders_refunded++;
       if (!paidOrder(o)) continue;
       arm.orders_paid++;
       arm.revenue_cents += netRevenue(o);
@@ -104,6 +114,10 @@ export function commerceFromRecords(
             [o.visitor_id],
           )[0]
         : undefined;
+      if (profile) {
+        arm.paid_with_visit++;
+        arm.revenue_with_visit_cents += netRevenue(o);
+      }
       add(arm.by_device, profile?.device ?? "unknown");
       add(arm.by_viewport, profile?.viewport ?? "unknown");
     }

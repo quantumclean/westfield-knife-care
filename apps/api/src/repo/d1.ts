@@ -21,6 +21,7 @@ import {
   PROP_BREAKDOWNS,
   type AnalyticsReport,
   type FormErrorRow,
+  type HourRow,
   type NameRow,
   type PropRow,
   type ReportWindow,
@@ -297,7 +298,9 @@ export class D1Repository implements Repository {
       ", ranked AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY exp, vid ORDER BY CASE WHEN name = 'page_view' THEN 0 ELSE 1 END, created_at, id) AS rn FROM e)";
     const pick = (col: string) => `MAX(CASE WHEN rn = 1 THEN ${col} END)`;
 
-    const [totals, steps, props, names, views, errors] = await Promise.all([
+    // A landing visit: a page view of anything but the thank-you page (see isLandingView).
+    const landing = "name = 'page_view' AND page <> '/thanks'";
+    const [totals, steps, props, names, views, errors, hours] = await Promise.all([
       all<{ events_read: number; duplicates: number }>(
         "SELECT (SELECT COUNT(*) FROM e) AS events_read, " +
           "(SELECT COUNT(*) - COUNT(DISTINCT COALESCE(view_id, '') || '|' || name || '|' || props) " +
@@ -307,7 +310,8 @@ export class D1Repository implements Repository {
         ranked +
           `, v AS (SELECT exp, vid, ${pick("device")} AS device, ${pick("viewport")} AS viewport, ` +
           `${pick("channel")} AS channel, ${pick("source")} AS source, ` +
-          `${flag("name = 'page_view'")} AS visited, ${flag(engaging)} AS engaged, ` +
+          `${flag(landing)} AS visited, ${flag(engaging)} AS engaged, ` +
+          "MIN(CASE WHEN name = 'page_view' THEN 1 ELSE 0 END) AS only_views, " +
           `${flag("name = 'cta_click'")} AS cta, ${flag("name = 'booking_opened'")} AS opened, ` +
           `${flag("name = 'booking_step' AND json_extract(props, '$.step') = 'details'")} AS details, ` +
           `${flag("name = 'booking_submitted'")} AS submitted, ` +
@@ -315,7 +319,8 @@ export class D1Repository implements Repository {
           `${flag("name = 'address_suggest' AND json_extract(props, '$.action') = 'chosen'")} AS chose ` +
           "FROM ranked GROUP BY exp, vid) " +
           "SELECT exp AS experiment_id, device, viewport, channel, source, " +
-          "SUM(visited) AS visited, SUM(engaged) AS engaged, SUM(cta) AS cta, SUM(opened) AS opened, " +
+          "SUM(visited) AS visited, SUM(visited * only_views) AS view_only, " +
+          "SUM(engaged) AS engaged, SUM(cta) AS cta, SUM(opened) AS opened, " +
           "SUM(details) AS details, SUM(submitted) AS submitted, SUM(checkout) AS checkout, " +
           "SUM(details * chose) AS details_chose, SUM(details * chose * submitted) AS details_chose_submitted, " +
           "SUM(details * (1 - chose)) AS details_typed, " +
@@ -358,6 +363,11 @@ export class D1Repository implements Repository {
             .join(", ") +
           " FROM e WHERE name = 'form_error' GROUP BY exp",
       ),
+      all<HourRow>(
+        `, l AS (SELECT exp, vid, MIN(created_at) AS landed FROM e WHERE ${landing} GROUP BY exp, vid) ` +
+          "SELECT exp AS experiment_id, substr(landed, 1, 13) AS hour, COUNT(*) AS visitors " +
+          "FROM l GROUP BY exp, hour",
+      ),
     ]);
 
     const form_errors: FormErrorRow[] = [];
@@ -387,6 +397,7 @@ export class D1Repository implements Repository {
       names: numeric(names),
       views: numeric(views),
       form_errors,
+      hours: numeric(hours),
     };
   }
 
@@ -401,13 +412,14 @@ export class D1Repository implements Repository {
     const values = [window.since, window.until].filter((v): v is string => Boolean(v));
     const base =
       `WITH o AS (SELECT * FROM orders WHERE experiment_id IN (${list(EXPERIMENTS.map((e) => e.id))})${bounds("created_at")}), facts AS (` +
-      `SELECT experiment_id, ${j("payment_status")} IN ('paid','refunded') AS paid, ` +
+      // A fully refunded order is not a paid order (partial refunds stay paid, net of the refund).
+      `SELECT experiment_id, ${j("payment_status")} = 'paid' AS paid, ${j("payment_status")} = 'refunded' AS refunded, ` +
       `MAX(0, ${j("quote.total_cents")} - COALESCE(${j("refunded_amount_cents")}, CASE WHEN ${j("payment_status")} = 'refunded' THEN ${j("quote.total_cents")} ELSE 0 END)) AS revenue, ` +
       `${j("number_of_knives")} AS knives, COALESCE(${j("is_repeat_customer")},0) AS repeat_customer, COALESCE(${j("actual_repeat_purchase")},0) AS repeat_purchase, ` +
       `${canonical(j("repeat_intent"), ["yes", "maybe", "no", "unknown"], "unknown")} AS repeat_intent, ${j("time_to_fulfill_hours")} AS hours, ` +
       `${canonical(j("source"), ANALYTICS_SOURCES, "other")} AS source, ${canonical(j("acquisition_channel"), ACQUISITION_CHANNELS, "other")} AS channel, ` +
       `(SELECT e.data FROM analytics_events e WHERE json_extract(e.data,'$.visitor_id') = ${j("visitor_id")} ` +
-      `AND e.experiment_id = o.experiment_id AND json_extract(e.data,'$.name') = 'page_view' ` +
+      `AND e.experiment_id = o.experiment_id AND json_extract(e.data,'$.name') = 'page_view' AND json_extract(e.data,'$.page') <> '/thanks' ` +
       `AND e.expires_at > CAST(strftime('%s','now') AS INTEGER) AND e.created_at <= o.created_at${bounds("e.created_at")} ` +
       `ORDER BY e.created_at, e.id LIMIT 1) AS profile FROM o) `;
     const all = async <T>(sql: string) =>
@@ -419,7 +431,7 @@ export class D1Repository implements Repository {
       ).results;
     const [totals, intents, segments, waitlist] = await Promise.all([
       all<Record<string, string | number>>(
-        "SELECT experiment_id, COUNT(*) AS orders_created, SUM(paid) AS orders_paid, SUM(paid * revenue) AS revenue_cents, SUM(paid * knives) AS knives, SUM(paid * repeat_customer) AS repeat_customers, SUM(paid * repeat_purchase) AS repeat_purchases, SUM(CASE WHEN paid THEN COALESCE(hours,0) ELSE 0 END) AS fulfill_hours, SUM(paid AND hours IS NOT NULL) AS fulfilled FROM facts GROUP BY experiment_id",
+        "SELECT experiment_id, COUNT(*) AS orders_created, SUM(paid) AS orders_paid, SUM(refunded) AS orders_refunded, SUM(paid AND profile IS NOT NULL) AS paid_with_visit, SUM(paid * revenue) AS revenue_cents, SUM(CASE WHEN paid AND profile IS NOT NULL THEN revenue ELSE 0 END) AS revenue_with_visit_cents, SUM(paid * knives) AS knives, SUM(paid * repeat_customer) AS repeat_customers, SUM(paid * repeat_purchase) AS repeat_purchases, SUM(CASE WHEN paid THEN COALESCE(hours,0) ELSE 0 END) AS fulfill_hours, SUM(paid AND hours IS NOT NULL) AS fulfilled FROM facts GROUP BY experiment_id",
       ),
       all<{ experiment_id: string; value: string; count: number }>(
         "SELECT experiment_id, repeat_intent AS value, COUNT(*) AS count FROM facts WHERE paid GROUP BY experiment_id, repeat_intent",
@@ -453,7 +465,10 @@ export class D1Repository implements Repository {
         for (const key of [
           "orders_created",
           "orders_paid",
+          "orders_refunded",
+          "paid_with_visit",
           "revenue_cents",
+          "revenue_with_visit_cents",
           "knives",
           "repeat_customers",
           "repeat_purchases",
@@ -494,7 +509,8 @@ export class D1Repository implements Repository {
             "ROW_NUMBER() OVER (PARTITION BY json_extract(data,'$.visitor_id') ORDER BY created_at, id) AS rn " +
             "FROM analytics_events WHERE json_extract(data,'$.visitor_id') IN (" +
             chunk.map(() => "?").join(",") +
-            ") AND json_extract(data,'$.name') = 'page_view' AND expires_at > CAST(strftime('%s','now') AS INTEGER)" +
+            ") AND json_extract(data,'$.name') = 'page_view' AND json_extract(data,'$.page') <> '/thanks' " +
+            "AND expires_at > CAST(strftime('%s','now') AS INTEGER)" +
             bounds +
             ") SELECT visitor_id, device, viewport FROM ranked WHERE rn = 1",
         )

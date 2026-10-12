@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import {
   EXPERIMENTS,
+  LEGACY_V1_ACCEPTED_UNTIL,
   OFFER_VERSIONS,
   PRICE_VERSIONS,
   activeExperiments,
@@ -113,6 +114,12 @@ export function publicRoutes(deps: Deps) {
     if (parsed.events.some((e) => e.view_id !== "legacy-v1" && !e.owner))
       return c.json({ error: "invalid_event" }, 400);
     const created_at = deps.now().toISOString();
+    // v1 bodies (no deletion proof) are accepted only for a short window after the v2 deploy.
+    if (
+      created_at >= LEGACY_V1_ACCEPTED_UNTIL &&
+      parsed.events.some((e) => e.view_id === "legacy-v1")
+    )
+      return c.json({ error: "invalid_event" }, 400);
     const events = parsed.events.map((input): AnalyticsEvent => {
       const { experiment, offer, price } = resolveContext(input.experiment_id);
       return {

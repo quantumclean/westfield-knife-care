@@ -26,7 +26,7 @@ import {
 } from "./consent.ts";
 import { startHealthReporting } from "./health.ts";
 import { sanitizePageUrl, sanitizeReferrer } from "./privacy-url.ts";
-import { loadSession, storedVisitorId, type Session } from "./session.ts";
+import { loadSession, randomBase36, storedVisitorId, timeBase36, type Session } from "./session.ts";
 
 /**
  * Privacy-conscious analytics (schema v2, docs/analytics-events.md).
@@ -91,7 +91,7 @@ let owner: Promise<string | undefined> = Promise.resolve(undefined);
 const newId = (): string =>
   typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()
-    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+    : `${timeBase36()}-${randomBase36(10)}`;
 
 function screen(): { device: string; viewport: string } {
   try {

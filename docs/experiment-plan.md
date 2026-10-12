@@ -11,12 +11,12 @@ Everything in this plan maps onto code: experiments live in
 
 ## Phases
 
-| Phase                      | When       | What we do                                                                                                                                       | Exit criterion                                                               |
-| -------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
-| 1. Start simple, test fast | Weeks 1–4  | Launch landing page + flyer. Two services: Sharpen My Knives (paid) and Always Sharp pilot (waitlist). Same fulfilment: pickup, sharpen, return. | 30+ paid orders or 200+ unique visitors per experiment, whichever first      |
-| 2. Validate and learn      | Weeks 5–8  | Compare experiments, test turnaround and price, call every first customer, refine copy and process.                                              | A winning experiment with ≥ 3% visitor-to-paid and ≥ 40% "yes" repeat intent |
-| 3. Expand and partner      | Months 2–4 | Neighbourhood routes and pickup hubs (shops, gyms, co-ops). Restaurant / exchange program.                                                       | Route days at ≥ 8 pickups each; a partner hub producing ≥ 5 orders/month     |
-| 4. Grow and scale          | Months 4+  | Nearby towns, household subscriptions (Always Sharp), partner distribution and corporate/gift.                                                   | Subscription retention ≥ 70% at 3 months                                     |
+| Phase                      | When       | What we do                                                                                                                                       | Exit criterion                                                                                                           |
+| -------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| 1. Start simple, test fast | Weeks 1–4  | Launch landing page + flyer. Two services: Sharpen My Knives (paid) and Always Sharp pilot (waitlist). Same fulfilment: pickup, sharpen, return. | 30+ paid orders or 200+ unique visitors per experiment, whichever first                                                  |
+| 2. Validate and learn      | Weeks 5–8  | Compare experiments, test turnaround and price, call every first customer, refine copy and process.                                              | A winning experiment with ≥ 3% visitor-to-paid (measured visits, no data-quality warnings) and ≥ 40% "yes" repeat intent |
+| 3. Expand and partner      | Months 2–4 | Neighbourhood routes and pickup hubs (shops, gyms, co-ops). Restaurant / exchange program.                                                       | Route days at ≥ 8 pickups each; a partner hub producing ≥ 5 orders/month                                                 |
+| 4. Grow and scale          | Months 4+  | Nearby towns, household subscriptions (Always Sharp), partner distribution and corporate/gift.                                                   | Subscription retention ≥ 70% at 3 months                                                                                 |
 
 ## Live experiments
 
@@ -34,8 +34,9 @@ price only differs inside the bundle ($9.75 vs $9.80); the test is really
 1. **Demand:** unique visitors → CTA clicks → booking opened → booking
    submitted → checkout started → paid. All six steps are recorded per
    experiment and per channel.
-2. **Price acceptance:** paid rate and average knives per order. If
-   experiment-002 converts within 20% of 001 it wins on revenue per visitor.
+2. **Price acceptance:** paid orders and average knives per order. If
+   experiment-002 gets within 20% of 001's paid orders at equal exposure, it
+   wins on net revenue.
 3. **Operational reality:** `time_to_fulfill_hours` per order. Experiment-002
    promises next day; if the median exceeds 30 hours the promise is a lie and
    the experiment is paused regardless of conversion.
@@ -80,6 +81,11 @@ Rules:
 - `src` is unique per placement (`flyer-a`, `flyer-b`, `poster-coop`,
   `ig-story-3`). Lowercase, hyphens. Add `?src=` on top of a vanity path to
   distinguish two print batches of the same flyer without changing price.
+- **Register a new `src` before printing or posting it**: add it to
+  `ANALYTICS_SOURCES` in `packages/shared/src/analytics.ts` (a reviewed pull
+  request; never a name, street, ZIP or phone number). Unregistered tags are
+  still saved on orders and waitlist entries, but every analytics event and
+  report shows them as `other`.
 - `ch` is one of `print`, `social`, `referral`, `search`, `direct`,
   `partner`, `other`. If omitted it is inferred from `src`.
 - Attribution is first-touch per browser. A repeat visit does **not**
@@ -94,8 +100,15 @@ With a baseline of 3% visitor-to-paid, detecting a relative lift of 50%
 (3% → 4.5%) at 80% power needs roughly 1,600 visitors per arm. We will not
 reach that in weeks 1–4. Decisions in phase 1 therefore rest on:
 
-- direction of the paid rate with at least 15 paid orders per arm,
-- revenue per visitor,
+- paid orders and net revenue per arm, with at least 15 paid orders per arm
+  (Stripe-confirmed and not fully refunded: `outcomes.orders_paid` and
+  `revenue_cents` in `/api/admin/insights`). These cannot be inflated
+  without paying. Arms get equal exposure (1:1 weighting, equal flyer drops
+  logged in the tracking sheet), so paid orders per arm compare directly;
+  divide by flyers delivered if the drops were not equal,
+- paid per visitor and revenue per visitor as diagnostics only, and only
+  while the arm's `data_quality.warnings` is empty (browser visitor counts
+  can be fabricated; see `docs/analytics-insights.md`),
 - qualitative signal from calling every customer (what made them book,
   what nearly stopped them).
 
@@ -107,7 +120,10 @@ as proving one. Phase 2 continues the winner against a new challenger.
 - **Pause** an experiment when its median `time_to_fulfill_hours` breaks the
   offer's promise for two consecutive care days.
 - **Conclude** an experiment when the other arm has ≥ 15 paid orders and at
-  least 1.3× revenue per visitor, or after 8 weeks regardless.
+  least 1.3× its net revenue over the same window and equal exposure (per
+  flyer delivered if drops differ), or after 8 weeks regardless. Revenue per
+  visitor may support the call only when neither arm has data-quality
+  warnings.
 - **Never edit** a live offer or price version. Add `offer-003` or
   `price-003`, create `experiment-003`, set the old one to `concluded`.
 - Every change to `experiments.ts` is a pull request with the hypothesis in

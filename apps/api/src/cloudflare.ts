@@ -1,3 +1,4 @@
+import { DAILY_VIEWS_PER_IP } from "@wkc/shared";
 import { BODY_LIMITS, readJsonBody } from "./services/request-body.ts";
 import { createApp } from "./app.ts";
 import type { Config } from "./config.ts";
@@ -26,6 +27,8 @@ class DisabledPayments implements PaymentGateway {
   }
 }
 
+export { DAILY_VIEWS_PER_IP };
+
 const orderRead = /^\/api\/orders\/[^/]+$/;
 const feedbackWrite = /^\/api\/orders\/[^/]+\/feedback$/;
 
@@ -50,20 +53,23 @@ async function withinRateLimit(
   limit: number,
   orderId?: string,
   cost = 1,
+  windowSeconds = 60,
 ): Promise<boolean> {
-  const minute = Math.floor(Date.now() / 60000);
+  const window = Math.floor(Date.now() / 1000 / windowSeconds);
   // Hash the complete identity so neither the IP nor an order ID appears in D1 buckets.
   const input = new TextEncoder().encode(JSON.stringify([salt, ip, orderId]));
   const digest = await crypto.subtle.digest("SHA-256", input);
   const identifier = Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
+  // Per-minute buckets keep their historical key; longer windows are tagged with their length.
+  const period = windowSeconds === 60 ? String(window) : `${windowSeconds}s${window}`;
   const result = await db
     .prepare(
       "INSERT INTO api_rate_limits (bucket, hits, expires_at) VALUES (?, ?, ?) " +
         "ON CONFLICT(bucket) DO UPDATE SET hits = hits + excluded.hits RETURNING hits",
     )
-    .bind(scope + ":" + minute + ":" + identifier, cost, (minute + 2) * 60)
+    .bind(scope + ":" + period + ":" + identifier, cost, (window + 2) * windowSeconds)
     .first<{ hits: number }>();
   return Boolean(result && result.hits <= limit);
 }
@@ -84,12 +90,18 @@ const rateLimited = () =>
 export async function handlePagesApi(request: Request, env: PagesBindings): Promise<Response> {
   if (!env.DB) return unavailable("Booking database has not been connected.");
 
+  const path = new URL(request.url).pathname;
   try {
     const row = await env.DB.prepare(
-      "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' " +
-        "AND name IN ('orders', 'waitlist', 'analytics_events', 'api_rate_limits')",
-    ).first<{ count: number }>();
+      "SELECT SUM(CASE WHEN name IN ('orders', 'waitlist', 'analytics_events', 'api_rate_limits') " +
+        "THEN 1 ELSE 0 END) AS count, SUM(CASE WHEN name = 'analytics_deletions' THEN 1 ELSE 0 END) " +
+        "AS analytics FROM sqlite_master WHERE type = 'table'",
+    ).first<{ count: number; analytics?: number }>();
     if (row?.count !== 4) return unavailable("Booking database has not been initialized.");
+    // Analytics writes need migration 0005. Without it only analytics answers 503 (which the
+    // browser treats as "stop sending for this page"); booking keeps working.
+    if (path.startsWith("/api/events") && row.analytics !== 1)
+      return unavailable("Analytics storage has not been initialized.");
   } catch {
     return unavailable("Booking database is unavailable.");
   }
@@ -124,7 +136,6 @@ export async function handlePagesApi(request: Request, env: PagesBindings): Prom
       : false;
   const paymentsReady = Boolean(configuredOrigin && key && signatureSecret && correctKeyMode);
 
-  const path = new URL(request.url).pathname;
   const policy = ratePolicy(path, request.method);
   let protection: { ip: string; salt: string } | undefined;
   if (policy) {
@@ -138,11 +149,32 @@ export async function handlePagesApi(request: Request, env: PagesBindings): Prom
       if (request.method === "POST" && path === "/api/events") {
         const body = await readJsonBody(request.clone(), BODY_LIMITS.event);
         if (!body.ok) return Response.json({ error: body.error }, { status: body.status });
-        const value = body.value as { events?: unknown[] } | null;
+        const value = body.value as { events?: unknown[]; name?: unknown } | null;
         const cost = Array.isArray(value?.events)
           ? Math.max(1, Math.min(20, value.events.length))
           : 1;
         if (!(await withinRateLimit(env.DB, salt, ip, "event-units", 1200, undefined, cost)))
+          return rateLimited();
+        // A batch holds one visitor and view, so a request with a page_view is at most one new
+        // visitor. Capping those per IP per day bounds how far one address can inflate an
+        // arm's visitor count (and so deflate its paid-per-visitor rate).
+        const events = Array.isArray(value?.events) ? value.events : [value];
+        const opensView = events.some(
+          (e) => (e as { name?: unknown } | null)?.name === "page_view",
+        );
+        if (
+          opensView &&
+          !(await withinRateLimit(
+            env.DB,
+            salt,
+            ip,
+            "event-views",
+            DAILY_VIEWS_PER_IP,
+            undefined,
+            1,
+            86_400,
+          ))
+        )
           return rateLimited();
       }
       if (request.method === "POST" && feedbackWrite.test(path)) {

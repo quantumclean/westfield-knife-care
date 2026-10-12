@@ -9,14 +9,18 @@ export interface ExperimentSummary {
   status: string;
   offer_version: string;
   price_version: string;
-  /** Unique visitors per funnel step. */
+  /** Unique visitors per funnel step (`page_view`: landing-page visitors, not `/thanks`). */
   funnel: Record<string, number>;
   orders_created: number;
+  /** Paid, not fully refunded. */
   orders_paid: number;
+  orders_refunded: number;
+  /** Paid orders whose browser has a counted landing visit (the rate's numerator). */
+  orders_paid_with_visit: number;
   revenue_cents: number;
   average_order_cents: number;
   average_knives: number;
-  /** paid orders / unique page views */
+  /** orders_paid_with_visit / landing visitors: both sides from the same measured population */
   visitor_to_paid_rate: number;
   waitlist_signups: number;
   repeat_customers: number;
@@ -42,7 +46,11 @@ export async function buildSummary(deps: Deps, since?: string): Promise<Summary>
   const experiments = EXPERIMENTS.map((experiment): ExperimentSummary => {
     const paid = commerce.find((a) => a.experiment_id === experiment.id)!;
     const funnel = uniqueVisitorsByStep(report, experiment.id);
-    const views = funnel.page_view ?? 0;
+    // Landing visitors only: a thank-you page or follow-up link is not a visit.
+    funnel.page_view = report.steps
+      .filter((r) => r.experiment_id === experiment.id)
+      .reduce((n, r) => n + r.visited, 0);
+    const views = funnel.page_view;
     const revenue = paid.revenue_cents;
 
     return {
@@ -54,10 +62,12 @@ export async function buildSummary(deps: Deps, since?: string): Promise<Summary>
       funnel,
       orders_created: paid.orders_created,
       orders_paid: paid.orders_paid,
+      orders_refunded: paid.orders_refunded,
+      orders_paid_with_visit: paid.paid_with_visit,
       revenue_cents: revenue,
       average_order_cents: paid.orders_paid ? Math.round(revenue / paid.orders_paid) : 0,
       average_knives: paid.orders_paid ? round(paid.knives / paid.orders_paid) : 0,
-      visitor_to_paid_rate: views ? round(paid.orders_paid / views, 4) : 0,
+      visitor_to_paid_rate: views ? round(paid.paid_with_visit / views, 4) : 0,
       waitlist_signups: paid.waitlist_signups,
       repeat_customers: paid.repeat_customers,
       repeat_purchases: paid.repeat_purchases,

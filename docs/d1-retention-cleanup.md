@@ -19,7 +19,19 @@ written before migration 0003 had a 180-day expiry until it is applied) and
 expired API rate-limit buckets and proof-specific analytics deletion tombstones.
 Tombstones retain only the random visitor id and key hash for 90 days, prevent late
 requests from recreating deleted events, and must be cleaned up by the revised Worker.
-Apply 0005 **before** running the revised API or cleanup entrypoint.
+Apply 0005 **before** running the revised API or cleanup entrypoint. Until it is applied,
+the API answers `503` for `/api/events` and `/api/events/forget` only (booking is
+unaffected), and the cleanup Worker still cleans the other tables but reports the run as
+failed.
+
+**Production, before merging to `main`:** if Cloudflare Pages builds `main` for
+production, apply 0002–0005 to the **production** D1 database (in order) before the merge,
+then confirm with
+`SELECT name FROM sqlite_master WHERE name IN ('api_rate_limits','analytics_deletions');`.
+Deploy a production cleanup Worker (a separate config bound to the production database)
+before launch; until it runs, expired rows are hidden from reports but not deleted.
+`migrations/0003` is irreversible (older rows expire at once): export any summary you need
+first.
 Expired raw events remain physically present until cleanup succeeds; a passing unit
 test is not evidence that a deployed Cron Trigger is running. Confirm the binding,
 schedule and a successful execution separately before staging privacy acceptance.

@@ -246,6 +246,131 @@ describe("GET /api/admin/insights", () => {
     }
   });
 
+  it("never counts a fully refunded order as paid, and keeps a partial refund net", async () => {
+    const { app, orderIds } = await scenario();
+    expect((await insights(app)).arms[0].outcomes).toMatchObject({
+      orders_paid: 2,
+      orders_refunded: 0,
+    });
+    const refund = (orderId: string, cents: number) =>
+      app.request(
+        "/api/webhooks/stripe",
+        json(
+          "POST",
+          {
+            type: "refunded",
+            order_id: orderId,
+            payment_intent_id: "pi_" + orderId,
+            original_amount_cents: 3900,
+            refunded_amount_cents: cents,
+          },
+          { "stripe-signature": WEBHOOK_SECRET },
+        ),
+      );
+    expect((await refund(orderIds[0]!, 3900)).status).toBe(200);
+    expect((await refund(orderIds[1]!, 900)).status).toBe(200);
+    const [a] = (await insights(app)).arms;
+    expect(a.outcomes).toMatchObject({
+      orders_paid: 1,
+      orders_refunded: 1,
+      revenue_cents: 3000,
+      paid_with_measured_visit: 1,
+    });
+    expect(a.funnel.paid).toBe(1);
+  });
+
+  it("does not count thank-you page or follow-up link views as visitors", async () => {
+    const { app } = makeDeps();
+    await visit(app, { visitor: "visitor-landed-1", arm: "a" });
+    // A customer opens the follow-up feedback link on another device: only /thanks is seen.
+    const events = [
+      {
+        v: 2,
+        view_id: id(),
+        event_id: id(),
+        experiment_id: "experiment-001",
+        source: "direct",
+        acquisition_channel: "direct",
+        visitor_id: visitorId("visitor-thanks-only"),
+        owner: "f".repeat(64),
+        route: "/thanks",
+        device: "mobile",
+        viewport: "xs",
+        name: "page_view",
+        props: {},
+      },
+    ];
+    expect((await app.request("/api/events", json("POST", { events }))).status).toBe(204);
+    const [a] = (await insights(app)).arms;
+    expect(a.funnel.visited).toBe(1);
+    const summary = await readJson(await app.request("/api/admin/summary", admin));
+    expect(summary.experiments[0].funnel.page_view).toBe(1);
+  });
+
+  it("uses only paid orders with a counted visit for per-visitor rates", async () => {
+    const { app } = await scenario();
+    // A paid order from a browser with no counted visit (counting off, or deleted).
+    await paidOrder(app, "visitor-never-measured");
+    const [a] = (await insights(app)).arms;
+    expect(a.outcomes).toMatchObject({
+      orders_paid: 3,
+      paid_with_measured_visit: 2,
+      paid_per_visitor: Number((2 / 12).toFixed(4)),
+      revenue_per_visitor_cents: 650,
+    });
+    const summary = await readJson(await app.request("/api/admin/summary", admin));
+    expect(summary.experiments[0]).toMatchObject({
+      orders_paid: 3,
+      orders_paid_with_visit: 2,
+      visitor_to_paid_rate: Number((2 / 12).toFixed(4)),
+    });
+  });
+
+  it("flags page-view-only traffic and hourly spikes as data-quality warnings", async () => {
+    const { app } = await scenario();
+    const clean = (await insights(app)).arms[0];
+    expect(clean.data_quality).toMatchObject({
+      visitors: 12,
+      page_view_only: 2,
+      warnings: [],
+    });
+    // A script adds 40 page-view-only visitors to arm B within one hour.
+    for (let i = 0; i < 40; i++) await visit(app, { visitor: `visitor-bot-${i}`, arm: "b" });
+    const report = await insights(app);
+    const b = report.arms[1];
+    expect(b.data_quality.page_view_only).toBe(44);
+    expect(b.data_quality.warnings.join(" ")).toMatch(/nothing but a page view/);
+    const markdown = await (await app.request("/api/admin/insights?format=markdown", admin)).text();
+    expect(markdown).toContain("compare this arm on paid orders and revenue");
+  });
+
+  it("flags an hour far busier than the arm's median hour", async () => {
+    const { app, clock } = makeDeps();
+    const start = Date.parse("2026-10-01T08:00:00Z");
+    for (let h = 0; h < 5; h++) {
+      clock.now = new Date(start + h * 3_600_000);
+      await visit(app, {
+        visitor: `visitor-steady-${h}`,
+        arm: "a",
+        steps: [["section_view", { section: "hero" }]],
+      });
+    }
+    clock.now = new Date(start + 6 * 3_600_000);
+    for (let i = 0; i < 25; i++)
+      await visit(app, {
+        visitor: `visitor-spike-${i}`,
+        arm: "a",
+        steps: [["section_view", { section: "hero" }]],
+      });
+    const [a] = (await insights(app)).arms;
+    expect(a.data_quality).toMatchObject({
+      active_hours: 6,
+      peak_hour_visitors: 25,
+      median_hour_visitors: 1,
+    });
+    expect(a.data_quality.warnings.join(" ")).toMatch(/One hour brought 25 new visitors/);
+  });
+
   it("limits the report to a window", async () => {
     const { app, clock } = makeDeps();
     await visit(app, { visitor: "visitor-early-1", arm: "a" });

@@ -65,7 +65,7 @@ wkc -X PATCH "$API/admin/orders/<id>" -d '{"repeat_intent":"yes"}'
 ## Weekly review (Monday)
 
 ```sh
-wkc "$API/admin/summary" | jq '.experiments[] | {experiment_id, funnel, orders_paid, revenue_cents, visitor_to_paid_rate, average_time_to_fulfill_hours, repeat_intent, by_channel}'
+wkc "$API/admin/summary" | jq '.experiments[] | {experiment_id, funnel, orders_paid, orders_refunded, revenue_cents, orders_paid_with_visit, visitor_to_paid_rate, average_time_to_fulfill_hours, repeat_intent, by_channel}'
 ```
 
 Then read the UX report (where visitors come from, where booking fails, mobile

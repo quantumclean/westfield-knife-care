@@ -108,7 +108,8 @@ page_view → cta_click → booking_opened → booking_submitted → checkout_st
 ```
 
 The insights report (`GET /api/admin/insights`) uses a finer funnel, counting unique visitors
-per step. `paid` is taken from orders, not from `checkout_completed`:
+per step. `visited` counts landing-page views only (not `/thanks`). `paid` is taken from
+orders (paid and not fully refunded), not from `checkout_completed`:
 
 ```
 visited → engaged → cta_click → booking_opened → booking_details → booking_submitted → checkout_started → paid
@@ -132,7 +133,9 @@ differences, deployed to both arms at once (see `docs/launch-freeze.md`):
 
 A browser tab opened before the deploy still sends v1 bodies. The API normalises them into
 v2 (dropping `order_id` and other unlisted props) and validates them strictly. Those rows have
-`device: "unknown"` and `view_id: "legacy-v1"`.
+`device: "unknown"` and `view_id: "legacy-v1"`, and no deletion proof. v1 bodies are accepted
+only until `LEGACY_V1_ACCEPTED_UNTIL` (`packages/shared/src/analytics.ts`); set it about two
+weeks after the production deploy.
 
 ## Adding an event
 
@@ -146,9 +149,12 @@ v2 (dropping `order_id` and other unlisted props) and validates them strictly. T
 
 V2 ingestion requires an owner hash, a random-format visitor id, registered experiment and
 consistent visitor/view/context within a batch. Unknown sources map to `other`. Event ids
-are random UUIDs (or the browser timestamp/random fallback), not arbitrary text. The API
-adds request/unit limits and atomic per-view budgets. These protect capacity, not human
-identity: public UX metrics remain untrusted estimates. Deletion proof does not authenticate
-ingestion. Financial outcomes use complete windowed SQL aggregates, never client completions.
-Apply migrations 0003, 0004 and 0005 before enabling the revised analytics API, and run
-the revised scheduled cleanup for both expired events and deletion tombstones.
+are random UUIDs (or the browser timestamp/random fallback, always of fixed length), not
+arbitrary text. The API adds request/unit limits, a daily page-view budget per IP and atomic
+per-view budgets. These protect capacity, not human identity: public UX metrics remain
+untrusted estimates, so experiment decisions use paid orders and net revenue, and each arm
+reports `data_quality` warnings. Deletion proof does not authenticate ingestion. Financial
+outcomes use complete windowed SQL aggregates, never client completions. Apply migrations
+0003, 0004 and 0005 before enabling the revised analytics API (until 0005 is applied the
+analytics endpoints answer 503), and run the revised scheduled cleanup for both expired
+events and deletion tombstones.
