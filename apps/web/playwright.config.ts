@@ -10,6 +10,7 @@ export default defineConfig({
   use: {
     baseURL: "http://127.0.0.1:5207",
     channel: process.env.WKC_BROWSER_CHANNEL,
+    launchOptions: { executablePath: process.env.WKC_BROWSER_EXECUTABLE },
     trace: "retain-on-failure",
   },
   projects: [
@@ -37,7 +38,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `corepack pnpm exec vite ${process.env.WKC_BROWSER_PREVIEW ? "preview" : ""} --port 5207 --host 127.0.0.1 --strictPort`,
+    command: `pnpm exec vite ${process.env.WKC_BROWSER_PREVIEW ? "preview" : ""} --port 5207 --host 127.0.0.1 --strictPort`,
     url: "http://127.0.0.1:5207",
     reuseExistingServer: false,
     env: {

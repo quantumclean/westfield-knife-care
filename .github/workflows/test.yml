@@ -36,6 +36,12 @@ jobs:
 
       - run: pnpm build
 
+      - name: Install browser for local UI checks
+        run: pnpm --filter @wkc/web exec playwright install --with-deps chromium
+
+      - name: Run mocked browser checks
+        run: pnpm --filter @wkc/web test:browser
+
       - name: Upload web build
         uses: actions/upload-artifact@v4
         with:

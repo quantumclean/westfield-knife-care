@@ -56,6 +56,12 @@
   font-size: 0.9rem;
   color: var(--ink-soft);
 }
+/* The modal close button is focused on open; keep the ring visible but light. */
+.modal-close:focus-visible {
+  outline-width: 2px;
+  outline-offset: 2px;
+  border-radius: 8px;
+}
 
 /* ---------- Header ---------- */
 .site-header {
