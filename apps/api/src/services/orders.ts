@@ -1,5 +1,6 @@
 import {
   describePrice,
+  createOrderSchema,
   formatCareDay,
   hoursBetween,
   isBookableCareDay,
@@ -14,9 +15,15 @@ import {
 } from "@wkc/shared";
 import type { Deps } from "../deps.ts";
 import type { PaymentEvent } from "../payments/types.ts";
-import { OrderWriteConflict } from "../repo/types.ts";
+import { OrderWriteConflict, type CheckoutRecord } from "../repo/types.ts";
 import { safeEqual } from "./safe-equal.ts";
-import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "./errors.ts";
+import {
+  CheckoutConflictError,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from "./errors.ts";
 
 export interface CreateOrderResult {
   order: Order;
@@ -38,7 +45,36 @@ export function resolveForOrder(experimentId: string): ResolvedExperiment {
   return resolveExperimentOrDefault(experimentId);
 }
 
-export async function createOrder(deps: Deps, input: CreateOrderInput): Promise<CreateOrderResult> {
+async function hash(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function fingerprint(key: string, value: string): Promise<string> {
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(key),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const digest = await crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export async function createOrder(
+  deps: Deps,
+  input: CreateOrderInput,
+  requestKey?: string,
+): Promise<CreateOrderResult> {
+  // Schema normalization fixes property ordering, defaults, casing and optional empty values.
+  input = createOrderSchema.parse(input);
+  const requestFingerprint = requestKey
+    ? await fingerprint(requestKey, JSON.stringify(input))
+    : undefined;
+  const key = requestKey ? await hash(requestKey) : undefined;
+  const existing = key ? await deps.repo.getCheckout(key) : undefined;
+  if (existing) return resumeCheckout(deps, existing, requestFingerprint!);
   const { experiment, offer, price } = resolveForOrder(input.experiment_id);
   const now = deps.now();
 
@@ -81,26 +117,97 @@ export async function createOrder(deps: Deps, input: CreateOrderInput): Promise<
     is_repeat_customer: isRepeat,
     actual_repeat_purchase: false,
   };
-  await deps.repo.putOrder(order);
-
   const site = deps.config.site_url;
-  const session = await deps.payments.createCheckoutSession({
+  const description = `${input.number_of_knives} knives, ${describePrice(price)} bundle, pickup ${formatCareDay(order.care_day)}`;
+  const expiresAt = Math.floor(now.getTime() / 1000) + 60 * 60;
+  if (!key) {
+    await deps.repo.putOrder(order);
+    const session = await deps.payments.createCheckoutSession(
+      checkoutRequest(order, site, description, expiresAt),
+    );
+    return attachCheckout(deps, order.id, session.id, session.url, order.quote);
+  }
+  const record = await deps.repo.claimCheckout(
+    {
+      key,
+      fingerprint: requestFingerprint!,
+      order_id: order.id,
+      created_at: order.created_at,
+      expires_at: expiresAt,
+      site_origin: site,
+      description,
+    },
     order,
-    description: `${input.number_of_knives} knives, ${describePrice(price)} bundle, pickup ${formatCareDay(order.care_day)}`,
+  );
+  return resumeCheckout(deps, record, requestFingerprint!);
+}
+
+async function resumeCheckout(
+  deps: Deps,
+  record: CheckoutRecord,
+  fingerprint: string,
+): Promise<CreateOrderResult> {
+  if (record.fingerprint !== fingerprint) throw new CheckoutConflictError("idempotency_conflict");
+  const original = await getOrder(deps, record.order_id);
+  let sessionId = record.session_id;
+  let checkoutUrl: string;
+  if (!sessionId) {
+    if (Math.floor(deps.now().getTime() / 1000) >= record.expires_at)
+      throw new CheckoutConflictError("checkout_recovery_required");
+    const session = await deps.payments.createCheckoutSession(
+      checkoutRequest(original, record.site_origin, record.description, record.expires_at),
+    );
+    await deps.repo.saveCheckoutSession(record.key, session.id);
+    sessionId = session.id;
+    checkoutUrl = session.url;
+  } else {
+    const session = await deps.payments.retrieveCheckoutSession(sessionId);
+    if (session.status === "complete") throw new CheckoutConflictError("checkout_complete");
+    if (session.status === "expired") throw new CheckoutConflictError("checkout_expired");
+    if (!session.url) throw new CheckoutConflictError("checkout_recovery_required");
+    checkoutUrl = session.url;
+  }
+  return attachCheckout(deps, record.order_id, sessionId, checkoutUrl, original.quote);
+}
+
+function checkoutRequest(order: Order, site: string, description: string, expiresAt: number) {
+  return {
+    order,
+    description,
     success_url: `${site}/thanks?order=${order.id}&ft=${order.feedback_token}&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${site}/?exp=${experiment.id}&src=${order.source}&ch=${order.acquisition_channel}&order=${order.id}&cancelled=1#book`,
+    cancel_url: `${site}/?exp=${order.experiment_id}&src=${order.source}&ch=${order.acquisition_channel}&order=${order.id}&cancelled=1#book`,
+    expires_at: expiresAt,
+  };
+}
+
+async function attachCheckout(
+  deps: Deps,
+  orderId: string,
+  sessionId: string,
+  checkoutUrl: string,
+  originalQuote: Order["quote"],
+): Promise<CreateOrderResult> {
+  const order = await retryOrderChange(async () => {
+    const current = await getOrder(deps, orderId);
+    if (current.stripe_checkout_session_id) {
+      if (current.stripe_checkout_session_id !== sessionId)
+        throw new Error("Checkout session does not match order");
+      return current;
+    }
+    current.stripe_checkout_session_id = sessionId;
+    current.updated_at = deps.now().toISOString();
+    await deps.repo.putOrder(current);
+    return current;
   });
-  order.stripe_checkout_session_id = session.id;
-  order.updated_at = deps.now().toISOString();
-  await deps.repo.putOrder(order);
 
   deps.log("order.created", {
     order_id: order.id,
     experiment_id: order.experiment_id,
-    total_cents: quote.total_cents,
-    is_repeat_customer: isRepeat,
+    total_cents: order.quote.total_cents,
+    is_repeat_customer: order.is_repeat_customer,
   });
-  return { order, checkout_url: session.url };
+  // Return the immutable quote, even if an operator subsequently edits the order.
+  return { order: { ...order, quote: originalQuote }, checkout_url: checkoutUrl };
 }
 
 export async function getOrder(deps: Deps, id: string): Promise<Order> {

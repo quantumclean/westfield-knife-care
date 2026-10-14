@@ -1,4 +1,5 @@
 import type { ClientErrorArea, CreateOrderInput, CreateWaitlistInput, Quote } from "@wkc/shared";
+import { checkoutRequestKey } from "./checkout-request.ts";
 
 export const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/$/, "");
 
@@ -103,6 +104,21 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       throw new ApiError(res.status, MESSAGES.invalid, issues);
     }
     if (res.status === 404) throw new ApiError(res.status, MESSAGES.notFound);
+    if (payload.error === "checkout_recovery_required")
+      throw new ApiError(
+        res.status,
+        "We could not confirm this checkout. Please contact Westfield Knife Care before starting another booking.",
+      );
+    if (payload.error === "checkout_expired" || payload.error === "checkout_complete")
+      throw new ApiError(
+        res.status,
+        "This checkout is no longer available. Check your booking status before starting again.",
+      );
+    if (payload.error === "idempotency_conflict")
+      throw new ApiError(
+        res.status,
+        "Your booking details changed during checkout. Please reload and check your details.",
+      );
     if (res.status >= 500) throw new ApiError(res.status, MESSAGES.unavailable);
     throw new ApiError(res.status, MESSAGES.generic);
   }
@@ -165,9 +181,11 @@ export type CreateOrderResult = {
 export const api = {
   config: async (): Promise<SiteConfig> => parseSiteConfig(await request<unknown>("/config")),
   createOrder: async (input: CreateOrderInput): Promise<CreateOrderResult> => {
+    const requestKey = await checkoutRequestKey(input);
     const result = await request<Partial<CreateOrderResult>>("/orders", {
       method: "POST",
       body: JSON.stringify(input),
+      headers: { "Idempotency-Key": requestKey },
     });
     // The browser is about to be sent to checkout_url, so it has to be a real URL.
     if (

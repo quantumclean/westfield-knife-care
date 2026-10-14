@@ -41,12 +41,21 @@ export function publicRoutes(deps: Deps) {
   );
 
   app.post("/orders", async (c) => {
+    const requestKey = c.req.header("Idempotency-Key");
+    if (requestKey !== undefined && !/^[A-Za-z0-9_-]{16,128}$/.test(requestKey))
+      return c.json(
+        {
+          error: "invalid_request",
+          issues: ["idempotency_key: use 16-128 letters, numbers, underscores or hyphens"],
+        },
+        400,
+      );
     const body = await readJsonBody(c.req.raw, BODY_LIMITS.order);
     if (!body.ok) return c.json({ error: body.error }, body.status);
     const parsed = createOrderSchema.safeParse(body.value);
     if (!parsed.success)
       return c.json({ error: "invalid_request", issues: formatIssues(parsed.error) }, 400);
-    const { order, checkout_url } = await createOrder(deps, parsed.data);
+    const { order, checkout_url } = await createOrder(deps, parsed.data, requestKey);
     return c.json(
       { order_id: order.id, checkout_url, quote: order.quote, experiment_id: order.experiment_id },
       201,

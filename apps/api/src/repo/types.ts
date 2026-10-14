@@ -50,11 +50,28 @@ export class OrderWriteConflict extends Error {
   override name = "OrderWriteConflict";
 }
 
+/** Minimal immutable intent. Customer data and bearer Checkout URLs stay in their source systems. */
+export interface CheckoutRecord {
+  key: string;
+  fingerprint: string;
+  order_id: string;
+  created_at: string;
+  expires_at: number;
+  site_origin: string;
+  description: string;
+  session_id?: string;
+}
+
 /**
  * Persistence boundary. Implementations: D1Repository (Cloudflare staging and production),
  * MemoryRepository (tests, local dev) and the legacy DynamoRepository (AWS Lambda build).
  */
 export interface Repository {
+  getCheckout(key: string): Promise<CheckoutRecord | undefined>;
+  /** Atomically insert or return the winning record for this key. */
+  claimCheckout(record: CheckoutRecord, order: Order): Promise<CheckoutRecord>;
+  /** Write-once provider result. A different session must never replace it. */
+  saveCheckoutSession(key: string, sessionId: string): Promise<void>;
   putOrder(order: Order): Promise<void>;
   getOrder(id: string): Promise<Order | undefined>;
   listOrders(options?: ListOrdersOptions): Promise<Order[]>;

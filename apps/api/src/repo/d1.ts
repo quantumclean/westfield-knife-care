@@ -35,6 +35,7 @@ import {
   type ListEventsOptions,
   type ListOrdersOptions,
   type Repository,
+  type CheckoutRecord,
 } from "./types.ts";
 
 /** Structural D1 types keep the existing Node-only API build independent. */
@@ -64,6 +65,72 @@ const limitValue = (value?: number) =>
 /** All customer data stays behind the API; the frontend never receives a D1 binding. */
 export class D1Repository implements Repository {
   constructor(private readonly db: D1Database) {}
+
+  async getCheckout(key: string): Promise<CheckoutRecord | undefined> {
+    const row = await this.db
+      .prepare(
+        "SELECT request_key AS key, fingerprint, order_id, created_at, expires_at, " +
+          "site_origin, description, session_id FROM checkout_requests WHERE request_key = ?",
+      )
+      .bind(key)
+      .first<CheckoutRecord>();
+    return row ?? undefined;
+  }
+
+  async claimCheckout(record: CheckoutRecord, order: Order): Promise<CheckoutRecord> {
+    if (!this.db.batch) throw new Error("Atomic checkout claims are unavailable");
+    const initial = { ...order, revision: 1 };
+    await this.db.batch([
+      this.db
+        .prepare(
+          "INSERT INTO checkout_requests " +
+            "(request_key, fingerprint, order_id, created_at, expires_at, site_origin, description) " +
+            "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(request_key) DO NOTHING",
+        )
+        .bind(
+          record.key,
+          record.fingerprint,
+          record.order_id,
+          record.created_at,
+          record.expires_at,
+          record.site_origin,
+          record.description,
+        ),
+      this.db
+        .prepare(
+          "INSERT INTO orders (id, created_at, updated_at, customer_email, experiment_id, data) " +
+            "SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS " +
+            "(SELECT 1 FROM checkout_requests WHERE request_key = ? AND order_id = ?) " +
+            "ON CONFLICT(id) DO NOTHING",
+        )
+        .bind(
+          order.id,
+          order.created_at,
+          order.updated_at,
+          order.customer.email.trim().toLowerCase(),
+          order.experiment_id,
+          JSON.stringify(initial),
+          record.key,
+          order.id,
+        ),
+    ]);
+    const winner = await this.getCheckout(record.key);
+    if (!winner) throw new Error("Checkout intent missing");
+    return winner;
+  }
+
+  async saveCheckoutSession(key: string, sessionId: string): Promise<void> {
+    await this.db
+      .prepare(
+        "UPDATE checkout_requests SET session_id = ? " +
+          "WHERE request_key = ? AND session_id IS NULL",
+      )
+      .bind(sessionId, key)
+      .run();
+    const record = await this.getCheckout(key);
+    if (!record?.session_id || record.session_id !== sessionId)
+      throw new Error("Checkout session changed or intent missing");
+  }
 
   async putOrder(order: Order): Promise<void> {
     const previousRevision = order.revision;

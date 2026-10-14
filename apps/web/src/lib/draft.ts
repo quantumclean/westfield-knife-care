@@ -1,3 +1,5 @@
+import { clearCheckoutRequest } from "./checkout-request.ts";
+
 /**
  * What the customer typed into the booking sheet, kept for this tab only.
  *
@@ -94,6 +96,9 @@ export function saveDraft(
 }
 
 export function clearDraft(storage: Store | null = store()): void {
+  // Checkout intent is shared in localStorage; also clear the supplied store for legacy/tests.
+  clearCheckoutRequest();
+  clearCheckoutRequest(storage);
   try {
     storage?.removeItem(DRAFT_KEY);
   } catch {
