@@ -34,8 +34,11 @@ class Statement implements D1Statement {
  * A real SQLite database behind the D1 interface, with the repository's migrations applied
  * (all of them, or up to and including `through`), so SQL is exercised rather than mocked.
  */
-export function sqliteD1(through?: string): D1Database & { raw: DatabaseSync } {
-  const raw = new DatabaseSync(":memory:");
+export function sqliteD1(
+  through?: string,
+  filename = ":memory:",
+): D1Database & { raw: DatabaseSync } {
+  const raw = new DatabaseSync(filename);
   for (const file of readdirSync(MIGRATIONS).sort()) {
     if (!file.endsWith(".sql") || (through && file > through)) continue;
     raw.exec(readFileSync(resolve(MIGRATIONS, file), "utf8"));

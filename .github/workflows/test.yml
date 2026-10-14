@@ -1,6 +1,7 @@
 name: Test
 
 on:
+  workflow_call:
   pull_request:
   push:
     branches: [main]
@@ -16,6 +17,13 @@ jobs:
   test:
     name: Lint, typecheck, test, build
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      API_PROXY_TARGET: http://127.0.0.1:9
+      VITE_API_BASE_URL: /api
+      VITE_GA4_MEASUREMENT_ID: ""
+      VITE_GA4_MANUAL_EVENTS_ONLY: "false"
+      WKC_TEST_DIAGNOSTICS: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -34,6 +42,9 @@ jobs:
 
       - run: pnpm test
 
+      - name: Disposable D1 persistence and isolated analytics scale regression
+        run: pnpm --filter @wkc/api test:database --reporter=default --reporter=junit --outputFile=../../.tmp/database-results.xml
+
       - run: pnpm build
 
       - name: Install browser for local UI checks
@@ -41,6 +52,18 @@ jobs:
 
       - name: Run mocked browser checks
         run: pnpm --filter @wkc/web test:browser
+
+      - name: Upload synthetic test diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: synthetic-test-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .tmp/browser-results
+            .tmp/database-results.xml
+            .tmp/unit-*.xml
+          if-no-files-found: ignore
+          retention-days: 3
 
       - name: Upload web build
         uses: actions/upload-artifact@v4
@@ -52,6 +75,7 @@ jobs:
   terraform:
     name: Terraform format and validate
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
