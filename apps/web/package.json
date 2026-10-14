@@ -11,7 +11,10 @@
     "test": "vitest run",
     "test:browser": "playwright test",
     "e2e": "playwright test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dev:game-lab": "vite --config game-lab/vite.config.ts",
+    "build:game-lab": "vite build --config game-lab/vite.config.ts",
+    "test:game-lab": "playwright test -c game-lab/playwright.config.ts"
   },
   "dependencies": {
     "@apple/mapkit-loader": "^1.0.0",

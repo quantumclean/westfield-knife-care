@@ -43,6 +43,8 @@ const SOURCES: Record<string, string> = {
   "src/thanks.tsx": read("src/thanks.tsx"),
   "src/lib/ics.ts (calendar reminder text)": read("src/lib/ics.ts"),
   "src/toy/slice-board.ts": read("src/toy/slice-board.ts"),
+  "game-lab/src/copy.ts (game-lab prototype strings)": read("game-lab/src/copy.ts"),
+  "game-lab/src/GameLab.tsx": read("game-lab/src/GameLab.tsx"),
   ...Object.fromEntries(sections.map((f) => [f, read(f)])),
 };
 
