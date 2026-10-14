@@ -688,3 +688,10 @@ How to read it:
 | 5   | The optional `game_feedback` thumbs                                                       | Include it: one enum, and the cheapest "is it fun" signal.                                                           |
 | 6   | Should "Delete my analytics data" also clear the game's local preferences and best score? | Yes, for one clear "forget me" button.                                                                               |
 | 7   | Full scope or the 2-week first cut                                                        | The first cut if the goal is to test interest. Full scope if it is a brand piece.                                    |
+
+### Confirmed by the owner (2026-10-14)
+
+These two decisions are final and override the recommendations above where they differ.
+
+- **Copy (decision 1).** All customer-facing game copy says "pickup, sharpening and return". The phrase "professional sharpening" is not used anywhere in the game, including `src/game/copy.ts`, the S4 service beats and the results screen.
+- **Timing (decision 2).** The game stays disabled until the pricing experiment's launch freeze ends (`docs/launch-freeze.md`, backstop around 2026-11-19 or an earlier concluded decision). There is no early rollout, and no owner exception to ship it to both arms during the freeze. The build flag `VITE_GAME_ENABLED` stays off in every environment until then. Section 4.5 and the phase plan in section 7 apply unchanged, and the "[exception]" route in section 10 decision 2 is withdrawn.
