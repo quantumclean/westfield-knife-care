@@ -8,6 +8,7 @@
     "dev": "node --env-file-if-exists=../../.env --watch --experimental-strip-types src/server.ts",
     "build": "node build.mjs",
     "test": "vitest run",
+    "test:database": "vitest run --config vitest.database.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
