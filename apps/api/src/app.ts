@@ -7,6 +7,7 @@ import { publicRoutes } from "./routes/public.ts";
 import { webhookRoutes } from "./routes/webhooks.ts";
 import {
   ConflictError,
+  CheckoutConflictError,
   ForbiddenError,
   NotFoundError,
   ValidationError,
@@ -29,12 +30,13 @@ export function createApp(deps: Deps) {
     cors({
       origin: deps.config.cors_origins,
       allowMethods: ["GET", "POST", "PATCH", "OPTIONS"],
-      allowHeaders: ["Content-Type", "X-Admin-Key"],
+      allowHeaders: ["Content-Type", "X-Admin-Key", "Idempotency-Key"],
       maxAge: 600,
     }),
   );
 
   app.onError((error, c) => {
+    if (error instanceof CheckoutConflictError) return c.json({ error: error.code }, 409);
     if (error instanceof ValidationError)
       return c.json({ error: "invalid_request", issues: error.issues }, 400);
     if (error instanceof ForbiddenError) return c.json({ error: "forbidden" }, 403);

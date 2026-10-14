@@ -22,6 +22,10 @@ class DisabledPayments implements PaymentGateway {
     throw new Error("Payments are not configured");
   }
 
+  async retrieveCheckoutSession(): Promise<never> {
+    throw new Error("Payments are not configured");
+  }
+
   async parseWebhook(): Promise<never> {
     throw new WebhookVerificationError("Payments are not configured");
   }
@@ -95,13 +99,16 @@ export async function handlePagesApi(request: Request, env: PagesBindings): Prom
     const row = await env.DB.prepare(
       "SELECT SUM(CASE WHEN name IN ('orders', 'waitlist', 'analytics_events', 'api_rate_limits') " +
         "THEN 1 ELSE 0 END) AS count, SUM(CASE WHEN name = 'analytics_deletions' THEN 1 ELSE 0 END) " +
-        "AS analytics FROM sqlite_master WHERE type = 'table'",
-    ).first<{ count: number; analytics?: number }>();
+        "AS analytics, SUM(CASE WHEN name = 'checkout_requests' THEN 1 ELSE 0 END) " +
+        "AS checkout FROM sqlite_master WHERE type = 'table'",
+    ).first<{ count: number; analytics?: number; checkout?: number }>();
     if (row?.count !== 4) return unavailable("Booking database has not been initialized.");
     // Analytics writes need migration 0005. Without it only analytics answers 503 (which the
     // browser treats as "stop sending for this page"); booking keeps working.
     if (path.startsWith("/api/events") && row.analytics !== 1)
       return unavailable("Analytics storage has not been initialized.");
+    if (request.method === "POST" && path === "/api/orders" && row.checkout !== 1)
+      return unavailable("Checkout storage has not been initialized.");
   } catch {
     return unavailable("Booking database is unavailable.");
   }

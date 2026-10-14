@@ -3,6 +3,7 @@ import {
   WebhookVerificationError,
   type CheckoutRequest,
   type CheckoutSession,
+  type CheckoutSessionState,
   type PaymentEvent,
   type PaymentGateway,
 } from "./types.ts";
@@ -10,8 +11,6 @@ import {
 export interface StripeGatewayOptions {
   secret_key: string;
   webhook_secret?: string;
-  /** Minutes before an unpaid Checkout session expires (Stripe minimum 30). */
-  session_ttl_minutes?: number;
   runtime?: "node" | "worker";
 }
 
@@ -22,7 +21,6 @@ export interface StripeGatewayOptions {
 export class StripeGateway implements PaymentGateway {
   private readonly stripe: Stripe;
   private readonly webhookSecret: string | undefined;
-  private readonly ttlMinutes: number;
   private readonly runtime: "node" | "worker";
 
   constructor(options: StripeGatewayOptions) {
@@ -34,7 +32,6 @@ export class StripeGateway implements PaymentGateway {
           })
         : new Stripe(options.secret_key);
     this.webhookSecret = options.webhook_secret;
-    this.ttlMinutes = Math.max(30, options.session_ttl_minutes ?? 60);
   }
 
   async createCheckoutSession(request: CheckoutRequest): Promise<CheckoutSession> {
@@ -69,12 +66,23 @@ export class StripeGateway implements PaymentGateway {
         payment_intent_data: { metadata },
         success_url: request.success_url,
         cancel_url: request.cancel_url,
-        expires_at: Math.floor(Date.now() / 1000) + this.ttlMinutes * 60,
+        expires_at: request.expires_at,
       },
       { idempotencyKey: `checkout-${order.id}` },
     );
     if (!session.url) throw new Error("Stripe did not return a checkout URL");
     return { id: session.id, url: session.url };
+  }
+
+  async retrieveCheckoutSession(id: string): Promise<CheckoutSessionState> {
+    const session = await this.stripe.checkout.sessions.retrieve(id);
+    const status: CheckoutSessionState["status"] =
+      session.status === "open" ? "open" : session.status === "complete" ? "complete" : "expired";
+    return {
+      id: session.id,
+      status,
+      url: session.status === "open" ? (session.url ?? undefined) : undefined,
+    };
   }
 
   async parseWebhook(rawBody: string, signature: string | undefined): Promise<PaymentEvent> {

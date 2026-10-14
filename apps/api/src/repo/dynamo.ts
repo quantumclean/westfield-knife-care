@@ -6,6 +6,7 @@ import {
   PutCommand,
   QueryCommand,
   TransactWriteCommand,
+  UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import {
   MAX_EVENTS_PER_VIEW,
@@ -22,12 +23,14 @@ import {
   type VisitorProfile,
 } from "./analytics-report.ts";
 import {
+  OrderWriteConflict,
   compareEventsDesc,
   eventExpiresAt,
   isBeforeCursor,
   type ListEventsOptions,
   type ListOrdersOptions,
   type Repository,
+  type CheckoutRecord,
 } from "./types.ts";
 
 /**
@@ -57,7 +60,9 @@ export class DynamoRepository implements Repository {
   }
 
   async putOrder(order: Order): Promise<void> {
-    await this.put({
+    const previous = order.revision;
+    const next = (previous ?? 0) + 1;
+    const item = {
       pk: `ORDER#${order.id}`,
       sk: "ORDER",
       gsi1pk: `EMAIL#${order.customer.email}`,
@@ -65,20 +70,124 @@ export class DynamoRepository implements Repository {
       gsi2pk: "ENTITY#order",
       gsi2sk: order.created_at,
       entity: "order",
-      data: order,
-    });
+      data: { ...order, revision: next },
+    };
+    try {
+      await this.doc.send(
+        new PutCommand({
+          TableName: this.tableName,
+          Item: item,
+          ConditionExpression:
+            previous === undefined
+              ? "attribute_not_exists(pk)"
+              : previous === 0
+                ? "attribute_exists(pk) AND (attribute_not_exists(#data.#revision) OR #data.#revision = :previous)"
+                : "#data.#revision = :previous",
+          ...(previous === undefined
+            ? {}
+            : {
+                ExpressionAttributeNames: { "#data": "data", "#revision": "revision" },
+                ExpressionAttributeValues: { ":previous": previous },
+              }),
+        }),
+      );
+    } catch (error) {
+      if ((error as { name?: string }).name === "ConditionalCheckFailedException")
+        throw new OrderWriteConflict("Order changed during update");
+      throw error;
+    }
+    order.revision = next;
   }
 
   async getOrder(id: string): Promise<Order | undefined> {
     const result = await this.doc.send(
-      new GetCommand({ TableName: this.tableName, Key: { pk: `ORDER#${id}`, sk: "ORDER" } }),
+      new GetCommand({
+        TableName: this.tableName,
+        Key: { pk: `ORDER#${id}`, sk: "ORDER" },
+        ConsistentRead: true,
+      }),
     );
-    return result.Item ? (result.Item.data as Order) : undefined;
+    if (!result.Item) return undefined;
+    const order = result.Item.data as Order;
+    order.revision ??= 0;
+    return order;
+  }
+
+  async getCheckout(key: string): Promise<CheckoutRecord | undefined> {
+    const result = await this.doc.send(
+      new GetCommand({
+        TableName: this.tableName,
+        Key: { pk: `CHECKOUT#${key}`, sk: "CHECKOUT" },
+        ConsistentRead: true,
+      }),
+    );
+    return result.Item ? (result.Item.data as CheckoutRecord) : undefined;
+  }
+
+  async claimCheckout(record: CheckoutRecord, order: Order): Promise<CheckoutRecord> {
+    const initial = { ...order, revision: 1 };
+    try {
+      await this.doc.send(
+        new TransactWriteCommand({
+          TransactItems: [
+            {
+              Put: {
+                TableName: this.tableName,
+                Item: { pk: `CHECKOUT#${record.key}`, sk: "CHECKOUT", data: record },
+                ConditionExpression: "attribute_not_exists(pk)",
+              },
+            },
+            {
+              Put: {
+                TableName: this.tableName,
+                Item: {
+                  pk: `ORDER#${order.id}`,
+                  sk: "ORDER",
+                  gsi1pk: `EMAIL#${order.customer.email}`,
+                  gsi1sk: order.created_at,
+                  gsi2pk: "ENTITY#order",
+                  gsi2sk: order.created_at,
+                  entity: "order",
+                  data: initial,
+                },
+                ConditionExpression: "attribute_not_exists(pk)",
+              },
+            },
+          ],
+        }),
+      );
+      return record;
+    } catch (error) {
+      if ((error as { name?: string }).name !== "TransactionCanceledException") throw error;
+      const winner = await this.getCheckout(record.key);
+      if (!winner) throw new Error("Checkout intent missing");
+      return winner;
+    }
+  }
+
+  async saveCheckoutSession(key: string, sessionId: string): Promise<void> {
+    try {
+      await this.doc.send(
+        new UpdateCommand({
+          TableName: this.tableName,
+          Key: { pk: `CHECKOUT#${key}`, sk: "CHECKOUT" },
+          UpdateExpression: "SET #data.#session = :session",
+          ConditionExpression: "attribute_exists(pk) AND attribute_not_exists(#data.#session)",
+          ExpressionAttributeNames: { "#data": "data", "#session": "session_id" },
+          ExpressionAttributeValues: { ":session": sessionId },
+        }),
+      );
+    } catch (error) {
+      if ((error as { name?: string }).name !== "ConditionalCheckFailedException") throw error;
+      const record = await this.getCheckout(key);
+      if (!record?.session_id || record.session_id !== sessionId)
+        throw new Error("Checkout session changed or intent missing");
+    }
   }
 
   async listOrders(options: ListOrdersOptions = {}): Promise<Order[]> {
     const items = await this.queryEntity("order", options.limit);
-    const orders = items.map((i) => i.data as Order);
+    const orders = items.map((i) => ({ revision: 0, ...(i.data as Order) }));
     return options.experiment_id
       ? orders.filter((o) => o.experiment_id === options.experiment_id)
       : orders;
@@ -95,7 +204,7 @@ export class DynamoRepository implements Repository {
         ScanIndexForward: false,
       }),
     );
-    return (result.Items ?? []).map((i) => i.data as Order);
+    return (result.Items ?? []).map((i) => ({ revision: 0, ...(i.data as Order) }));
   }
 
   async putWaitlistEntry(entry: WaitlistEntry): Promise<void> {

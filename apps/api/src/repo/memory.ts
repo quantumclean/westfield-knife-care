@@ -20,6 +20,7 @@ import {
   type ListEventsOptions,
   type ListOrdersOptions,
   type Repository,
+  type CheckoutRecord,
 } from "./types.ts";
 
 const byCreatedDesc = <T extends { created_at: string }>(a: T, b: T) =>
@@ -27,6 +28,29 @@ const byCreatedDesc = <T extends { created_at: string }>(a: T, b: T) =>
 
 /** In-memory repository for tests and local development. Data is lost on restart. */
 export class MemoryRepository implements Repository {
+  private checkouts = new Map<string, CheckoutRecord>();
+
+  async getCheckout(key: string): Promise<CheckoutRecord | undefined> {
+    const record = this.checkouts.get(key);
+    return record ? structuredClone(record) : undefined;
+  }
+
+  async claimCheckout(record: CheckoutRecord, order: Order): Promise<CheckoutRecord> {
+    if (!this.checkouts.has(record.key)) {
+      this.checkouts.set(record.key, structuredClone(record));
+      await this.putOrder(order);
+    }
+    return structuredClone(this.checkouts.get(record.key)!);
+  }
+
+  async saveCheckoutSession(key: string, sessionId: string): Promise<void> {
+    const record = this.checkouts.get(key);
+    if (!record) throw new Error("Checkout intent missing");
+    if (record.session_id && record.session_id !== sessionId)
+      throw new Error("Checkout session changed");
+    record.session_id ??= sessionId;
+  }
+
   private orders = new Map<string, Order>();
   private waitlist = new Map<string, WaitlistEntry>();
   private events = new Map<string, AnalyticsEvent>();

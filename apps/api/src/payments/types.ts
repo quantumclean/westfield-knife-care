@@ -6,11 +6,19 @@ export interface CheckoutRequest {
   description: string;
   success_url: string;
   cancel_url: string;
+  /** Fixed when the durable intent is claimed; retries must reuse it byte-for-byte. */
+  expires_at: number;
 }
 
 export interface CheckoutSession {
   id: string;
   url: string;
+}
+
+export interface CheckoutSessionState {
+  id: string;
+  status: "open" | "complete" | "expired";
+  url?: string;
 }
 
 /** Provider-agnostic payment events the order service reacts to. */
@@ -41,6 +49,7 @@ export class WebhookVerificationError extends Error {
 
 export interface PaymentGateway {
   createCheckoutSession(request: CheckoutRequest): Promise<CheckoutSession>;
+  retrieveCheckoutSession(id: string): Promise<CheckoutSessionState>;
   /** Verify and normalise a webhook. Throws WebhookVerificationError on a bad signature. */
   parseWebhook(rawBody: string, signature: string | undefined): Promise<PaymentEvent>;
 }

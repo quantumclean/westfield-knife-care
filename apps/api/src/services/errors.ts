@@ -1,4 +1,16 @@
 /** Errors the HTTP layer maps onto status codes. */
+export class CheckoutConflictError extends Error {
+  constructor(
+    readonly code:
+      | "idempotency_conflict"
+      | "checkout_recovery_required"
+      | "checkout_expired"
+      | "checkout_complete",
+  ) {
+    super(code);
+  }
+}
+
 export class NotFoundError extends Error {
   override name = "NotFoundError";
 }
