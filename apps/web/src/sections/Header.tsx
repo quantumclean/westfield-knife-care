@@ -10,13 +10,15 @@ export interface HeaderProps {
 const LINKS = [
   { href: "#how-it-works", label: "How it works" },
   { href: "#pricing", label: "Pricing" },
+  { href: "#gift", label: "Gift" },
   { href: "#faq", label: "FAQ" },
 ] as const;
 
 /**
- * Logo, section links and the booking button. On phones the three links
+ * Logo, section links and the booking button. On phones the four links
  * drop to a second row instead of hiding behind a menu: there are only
- * three, and visible links are found more often than a menu button.
+ * four, and visible links are found more often than a menu button. "Gift"
+ * leads to the gift-interest band, which only collects interest.
  */
 export function Header({ ctaLabel, onBook, onIntent }: HeaderProps) {
   return (

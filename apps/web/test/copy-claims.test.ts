@@ -1,7 +1,17 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { BRAND, FAQ, HOW_IT_WORKS, WHY_US } from "@wkc/shared";
+import {
+  BRAND,
+  FAQ,
+  GIFT_WAY,
+  HOW_IT_WORKS,
+  MAIL_IN_WAY,
+  PICKUP_WAY,
+  PREP,
+  WAYS_INTRO,
+  WHY_US,
+} from "@wkc/shared";
 
 /**
  * Owner decision (2026-10-09): the business offers no refunds and makes no
@@ -24,6 +34,14 @@ const BANNED: readonly [RegExp, string][] = [
   [/most orders|always within/i, "turnaround statistic"],
   [/only charged once/i, "charging promise"],
   [/home or office/i, "unverified pickup locations"],
+  // Added with mail-in and gifts (interest only): nothing here is verified or on sale.
+  [/sanitiz|sanitis|disinfect|germ[- ]free|steriliz|sterilis/i, "sanitization claim"],
+  [/\binsur(ed|ance)\b/i, "insurance claim"],
+  [/\bguarantee/i, "guarantee claim"],
+  [
+    /free shipping|prepaid (label|postage)|shipping kit (is|are) (available|included|ready)/i,
+    "shipping or kit availability claim",
+  ],
 ];
 
 const web = resolve(import.meta.dirname, "..");
@@ -36,6 +54,13 @@ const SOURCES: Record<string, string> = {
     HOW_IT_WORKS,
     WHY_US,
     FAQ,
+  }),
+  "shared content (three ways, getting ready)": JSON.stringify({
+    WAYS_INTRO,
+    PICKUP_WAY,
+    MAIL_IN_WAY,
+    GIFT_WAY,
+    PREP,
   }),
   "index.html (title, description, social tags)": read("index.html"),
   "src/forms/BookingForm.tsx": read("src/forms/BookingForm.tsx"),
@@ -82,6 +107,54 @@ describe("customer-facing copy makes no unverified promises", () => {
       "always-sharp",
       "payment",
       "area",
+      "mail-in",
+      "gift",
     ]);
+  });
+});
+
+describe("mail-in and gifts are interest only", () => {
+  // Nothing about them may read like something that can be bought or has been set up.
+  const PURCHASE =
+    /\$\s?\d|\bbuy\b|\bpurchase\b|add to cart|check ?out|book now|order now|pay now|pay today/i;
+
+  it("marks both as coming soon, interest only, with no price or purchase wording", () => {
+    for (const [name, way] of [
+      ["mail-in", MAIL_IN_WAY],
+      ["gift", GIFT_WAY],
+    ] as const) {
+      const text = JSON.stringify(way).replace(/\\u00b7/g, "·");
+      expect(way.status, name).toMatch(/coming soon/i);
+      expect(way.status, name).toMatch(/interest only/i);
+      expect(text, `${name} reads like a purchase`).not.toMatch(PURCHASE);
+    }
+  });
+
+  it("says plainly that there is no shipping kit and not to mail knives", () => {
+    expect(JSON.stringify(MAIL_IN_WAY)).toMatch(/no shipping kit/i);
+    expect(MAIL_IN_WAY.note).toMatch(/do not mail knives/i);
+    expect(PREP.mail_in.body).toMatch(/not available yet/i);
+    expect(PREP.mail_in.body).toMatch(/do not send knives/i);
+    expect(FAQ.find((q) => q.id === "mail-in")?.answer).toMatch(/not yet/i);
+  });
+
+  it("presents a gift as a way to pay, not a third way to hand over knives", () => {
+    expect(GIFT_WAY.body).toMatch(/way to pay for someone else's sharpening/i);
+    expect(GIFT_WAY.body).toMatch(/not a third way/i);
+    expect(GIFT_WAY.note).toMatch(/do not need your recipient's details/i);
+    expect(FAQ.find((q) => q.id === "gift")?.answer).toMatch(/not selling gifts yet/i);
+  });
+
+  it("keeps pickup as the only bookable choice, and no longer says 'No shipping'", () => {
+    expect(PICKUP_WAY.status).toMatch(/open for booking/i);
+    expect(BRAND.tagline).not.toMatch(/no shipping/i);
+    expect(JSON.stringify({ HOW_IT_WORKS, WHY_US })).not.toMatch(/no shipping/i);
+    expect(read("src/sections/Hero.tsx")).not.toMatch(/no shipping/i);
+    expect(read("index.html")).not.toMatch(/no shipping/i);
+  });
+
+  it("gives preparation steps for the customer without claiming how knives are handled", () => {
+    expect(PREP.steps.map((s) => s.id)).toEqual(["wash", "wrap", "bag", "door"]);
+    expect(JSON.stringify(PREP)).not.toMatch(/\bwe (clean|wash|sanitiz|disinfect|inspect|wear)/i);
   });
 });

@@ -86,6 +86,9 @@
   font-size: 0.96rem;
 }
 .site-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
   text-decoration: none;
 }
 .site-nav a:hover {
@@ -180,7 +183,7 @@
   color: var(--tomato);
 }
 .hero-lede {
-  max-width: 36ch;
+  max-width: 42ch;
   font-size: clamp(1.08rem, 2vw, 1.24rem);
   color: var(--ink-soft);
 }
@@ -1628,4 +1631,298 @@
   padding: 0.2rem 1.6rem 1.4rem;
   font-size: 0.9rem;
   color: var(--ink-soft);
+}
+
+/* ---------- Hero: secondary paths ---------- */
+.hero-more {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin: 0;
+}
+.hero-more .link-quiet {
+  display: inline-flex;
+  align-items: center;
+  text-align: left;
+}
+
+/* ---------- Three ways: pickup, mail-in (interest only), gift (interest only) ---------- */
+.ways-label {
+  margin: 0 0 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.ways-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+.way {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-width: 0;
+  padding: 1.4rem;
+  border: 1.5px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.way h3 {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 1.9rem;
+  font-weight: 400;
+  line-height: 1.05;
+}
+.way p {
+  margin: 0;
+}
+/* Bookable today: solid forest edge and an offset oak shadow, like the photo frames. */
+.way-open {
+  border: 2px solid var(--forest);
+  box-shadow: 6px 6px 0 var(--oak-edge);
+}
+/* Not bookable: dashed and quieter, so it never looks like a product on a shelf. */
+.way-soon,
+.way-gift {
+  border-style: dashed;
+  background: var(--paper-deep);
+}
+.way-status {
+  width: fit-content;
+  max-width: 100%;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.way-status-open {
+  background: var(--sage);
+}
+.way-status-soon {
+  background: var(--butter);
+  border: 1.5px dashed var(--ink-soft);
+}
+.way-meta {
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+.way-warn {
+  font-weight: 650;
+  color: var(--ink);
+}
+.way-cta {
+  margin-top: auto;
+  width: 100%;
+  min-height: 48px;
+}
+.way-open .way-meta,
+.way-soon .way-meta {
+  margin-bottom: 0.5rem;
+}
+.way-gift {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 15rem);
+  align-items: center;
+  gap: 1rem 1.5rem;
+  margin-top: 1.25rem;
+  background: color-mix(in srgb, var(--coral) 28%, var(--card));
+}
+.way-gift-art {
+  width: 72px;
+  height: 72px;
+}
+.way-gift-copy {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+}
+.way-eyebrow {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+@media (max-width: 860px) {
+  .way-gift {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .way-gift .way-cta {
+    grid-column: 1 / -1;
+    margin-top: 0;
+  }
+}
+@media (max-width: 700px) {
+  .ways-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .way {
+    padding: 1.15rem;
+  }
+  .way h3 {
+    font-size: 1.7rem;
+  }
+}
+@media (max-width: 400px) {
+  .way-gift {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .way-gift-art {
+    width: 56px;
+    height: 56px;
+  }
+}
+
+/* Interest-only forms: the "nothing is charged" notice, then the explanation, with room between. */
+.interest-note .notice {
+  margin-bottom: 0.85rem;
+}
+
+/* ---------- Getting ready ---------- */
+#prepare {
+  background: color-mix(in srgb, var(--sage) 38%, var(--paper));
+}
+.prep-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.prep-step {
+  position: relative;
+  min-width: 0;
+  padding: 1.2rem;
+  border: 1.5px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.prep-step svg {
+  width: 56px;
+  height: 56px;
+  margin-bottom: 0.5rem;
+}
+.prep-num {
+  position: absolute;
+  top: 0.7rem;
+  right: 1rem;
+  font-family: var(--serif);
+  font-size: 1.8rem;
+  line-height: 1;
+  color: var(--tomato);
+}
+.prep-step h3 {
+  margin: 0 0 0.3rem;
+  font-family: var(--serif);
+  font-size: 1.4rem;
+  font-weight: 400;
+}
+.prep-step p {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+}
+.prep-unsure {
+  margin: 1.25rem 0 0;
+  font-weight: 600;
+}
+.prep-notes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+.prep-note {
+  min-width: 0;
+  padding: 1.1rem 1.3rem;
+  border: 1.5px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.prep-note-soon {
+  border-style: dashed;
+  background: var(--paper-deep);
+}
+.prep-note h3 {
+  margin: 0 0 0.3rem;
+  font-family: var(--serif);
+  font-size: 1.4rem;
+  font-weight: 400;
+}
+.prep-note p {
+  margin: 0;
+  font-size: 0.95rem;
+}
+@media (max-width: 900px) {
+  .prep-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 700px) {
+  .prep-notes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 520px) {
+  .prep-steps {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.75rem;
+  }
+  .prep-step {
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr);
+    column-gap: 0.9rem;
+    align-items: center;
+    padding: 0.9rem 2.6rem 0.9rem 0.9rem;
+  }
+  .prep-step svg {
+    grid-row: span 2;
+    margin: 0;
+  }
+  .prep-step h3,
+  .prep-step p {
+    grid-column: 2;
+  }
+}
+
+/* ---------- Narrow phones (320px): keep the booking button above the fold ---------- */
+@media (max-width: 380px) {
+  .hero {
+    padding-top: 0.9rem;
+  }
+  .hero-kicker {
+    gap: 0.35rem 0.6rem;
+    margin-bottom: 0.6rem;
+    font-size: 0.85rem;
+  }
+  .hero h1 {
+    font-size: 2.45rem;
+    margin-bottom: 0.6rem;
+  }
+  .hero-lede {
+    margin-bottom: 0.75rem;
+    font-size: 1rem;
+    line-height: 1.45;
+  }
+  .hero-ticket {
+    margin: 0.9rem 0;
+    padding: 0.7rem 0.9rem;
+  }
+  .hero-amount {
+    font-size: 2.3rem;
+  }
+  .hero-next {
+    padding-top: 0.5rem;
+  }
+  .hero-actions {
+    row-gap: 0;
+  }
 }

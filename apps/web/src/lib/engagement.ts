@@ -24,9 +24,11 @@ import {
 
 export const SECTION_SELECTORS: Record<SectionId, string> = {
   hero: ".hero",
+  ways: "#ways",
   how_it_works: "#how-it-works",
   process_film: "#process-film",
   pricing: "#pricing",
+  prepare: "#prepare",
   faq: "#faq",
 };
 

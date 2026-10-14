@@ -5,7 +5,7 @@
 export const BRAND = {
   name: "Westfield Knife Care",
   short_name: "Westfield",
-  tagline: "Local service. No shipping. Real people.",
+  tagline: "Local service. Real people.",
   service_area: "Westfield",
   support_email: "sales@usabiology.com",
 } as const;
@@ -46,7 +46,7 @@ export const HOW_IT_WORKS = [
   {
     step: 1,
     title: "We pick up",
-    body: "Schedule a pickup at your address in Westfield.",
+    body: "Schedule a pickup at your address in our service area.",
     icon: "truck",
   },
   {
@@ -63,7 +63,7 @@ export const HOW_IT_WORKS = [
   },
 ] as const;
 
-export const WHY_US = ["Local, no shipping", "Support a local business"] as const;
+export const WHY_US = ["Local pickup and return", "Support a local business"] as const;
 
 export const FAQ = [
   {
@@ -76,7 +76,7 @@ export const FAQ = [
     id: "how-to-pack",
     question: "How should I hand over my knives?",
     answer:
-      "Wrap each blade in a kitchen towel or cardboard sleeve and leave them in a bag at your door on your care day.",
+      "Wash and dry each knife, slide each blade into a cardboard sleeve or blade guard, put them together in a sturdy bag or box, and leave it at your door on your care day. A loose towel on its own can slip, so make sure each cover stays on. The Getting ready section has the steps.",
   },
   {
     id: "turnaround",
@@ -101,4 +101,81 @@ export const FAQ = [
     answer:
       "Westfield, Mountainside, Garwood, Cranford, Scotch Plains and Fanwood for now. If you are outside those towns, join the waitlist and tell us where you are; routes expand based on demand.",
   },
+  {
+    id: "mail-in",
+    question: "Can I mail my knives to you?",
+    answer:
+      "Not yet. We are finding out whether people want mail-in sharpening. There is no shipping kit, price or start date yet, so please do not send knives to us. Tell us you are interested and we will email you if it opens.",
+  },
+  {
+    id: "gift",
+    question: "Can I give this as a gift?",
+    answer:
+      "Not yet. A gift would be a way to pay for someone else's sharpening; their knives would still go through local pickup or mail-in. We are not selling gifts yet. Tell us you are interested and we will email you if they open.",
+  },
 ] as const;
+
+/** Section that explains the three choices. Only local pickup can be booked today. */
+export const WAYS_INTRO = {
+  title: "Three ways to a fresh edge",
+  subtitle:
+    "Pickup is open now. Mail-in and gifts are ideas we are testing, so tell us if you would use them.",
+  how_heading: "How we get your knives",
+} as const;
+
+export const PICKUP_WAY = {
+  title: "Local pickup and return",
+  status: "Open for booking",
+  body: "We collect your knives from your door, sharpen them, and bring them back to your doorstep.",
+} as const;
+
+export const MAIL_IN_WAY = {
+  title: "Mail-in sharpening",
+  status: "Coming soon · interest only",
+  body: "For people outside our pickup towns. There is no price, shipping method or start date yet, and no shipping kit.",
+  note: "Please do not mail knives to us.",
+  cta: "Tell us you are interested",
+} as const;
+
+export const GIFT_WAY = {
+  eyebrow: "Buying for someone else?",
+  title: "Give it as a gift",
+  status: "Coming soon · interest only",
+  body: "A gift is a way to pay for someone else's sharpening. It is not a third way to handle knives: theirs would still go by local pickup or mail-in.",
+  note: "We are not selling gifts yet. Nothing is charged, and we do not need your recipient's details.",
+  cta: "Tell us you are interested",
+} as const;
+
+/** Preparation guidance for handing knives over. Customer instructions only, no service claims. */
+export const PREP = {
+  title: "Getting your knives ready",
+  subtitle: "A few minutes of prep keeps everyone's fingers safe, whoever handles the bag.",
+  steps: [
+    { id: "wash", title: "Wash and dry", body: "Wash each knife by hand, then dry it." },
+    {
+      id: "wrap",
+      title: "Cover each blade",
+      body: "Slide each blade into a cardboard sleeve or blade guard. A loose towel can slip, so check the cover stays put.",
+    },
+    {
+      id: "bag",
+      title: "Pack them together",
+      body: "Put the covered knives in a sturdy bag or small box so no blade can poke through.",
+    },
+    {
+      id: "door",
+      title: "Leave it at your door",
+      body: "Set it where you told us to look, out of the rain, before 8am on pickup morning.",
+    },
+  ],
+  unsure:
+    "Serrated, ceramic, a loose handle, or a knife you cannot replace? Add a note when you book.",
+  back_home: {
+    title: "When they come back",
+    body: "Open the package with the blades pointing away from you, and wash and dry each knife before you first use it.",
+  },
+  mail_in: {
+    title: "Mail-in, when it opens",
+    body: "Mail-in is not available yet and we have no shipping kit, so please do not send knives to us. If it opens, we will confirm how to pack and ship before anything is sent. The same basics will apply: clean, dry, covered, and packed so no blade can poke through.",
+  },
+} as const;

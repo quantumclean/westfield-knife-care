@@ -116,6 +116,34 @@ describe("createWaitlistSchema", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it("accepts the interest-only mail-in and gift entries, and no address", () => {
+    for (const service_interest of ["mail_in", "gift"] as const) {
+      const result = createWaitlistSchema.safeParse({
+        experiment_id: "experiment-001",
+        name: "Grace",
+        email: "grace@example.com",
+        service_interest,
+        cadence: "once",
+        notes: "Roughly six knives.",
+      });
+      expect(result.success, service_interest).toBe(true);
+    }
+  });
+
+  it("still accepts every Always Sharp rhythm and rejects an unknown interest", () => {
+    const base = { experiment_id: "experiment-001", name: "G", email: "g@example.com" };
+    for (const cadence of ["weekly", "biweekly", "monthly"] as const) {
+      expect(
+        createWaitlistSchema.safeParse({ ...base, service_interest: "always_sharp", cadence })
+          .success,
+      ).toBe(true);
+    }
+    expect(
+      createWaitlistSchema.safeParse({ ...base, service_interest: "shipping", cadence: "once" })
+        .success,
+    ).toBe(false);
+  });
 });
 
 describe("createEventSchema", () => {

@@ -28,6 +28,8 @@ export interface Recorded {
   events: string[];
   /** Bodies of feedback POSTs. */
   feedback: string[];
+  /** Bodies of waitlist POSTs (the Always Sharp, mail-in and gift interest forms). */
+  waitlist: string[];
 }
 
 const json = (route: Route, body: unknown, status = 200) =>
@@ -41,7 +43,7 @@ export async function mockApi(
   page: Page,
   options: { orders?: unknown[]; orderStatus?: number } = {},
 ): Promise<Recorded> {
-  const recorded: Recorded = { urls: [], events: [], feedback: [] };
+  const recorded: Recorded = { urls: [], events: [], feedback: [], waitlist: [] };
   const orders = options.orders ?? [paidOrder];
   let served = 0;
   // The suite runs entirely against the local server: never contact providers or staging.
@@ -58,6 +60,10 @@ export async function mockApi(
     if (path === "/events") {
       recorded.events.push(request.postData() ?? "");
       return route.fulfill({ status: 204 });
+    }
+    if (path === "/waitlist" && request.method() === "POST") {
+      recorded.waitlist.push(request.postData() ?? "");
+      return json(route, { id: "w-0001" }, 201);
     }
     if (path.endsWith("/feedback")) {
       recorded.feedback.push(request.postData() ?? "");

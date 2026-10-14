@@ -25,4 +25,12 @@ const door = `
   <circle cx="36" cy="14" r="8" fill="#fff7e8" ${s}/>
   <path d="M36 9.5 V14 L39 16" ${s} fill="none"/>`;
 
-export const READY_ART = { wrap, bag, door } as const;
+/** A blade under a tap, with a drop falling from it. */
+const wash = `
+  <path d="M6 14 H20 C23 14 24 16 24 18 V20" fill="none" ${s}/>
+  <path d="M6 10 V18" ${s} fill="none"/>
+  <path d="M16 26 L36 36 L33 41 L12 31 Z" fill="#c5e3ed" ${s}/>
+  <path d="M33 41 L40 43 L43 37 L36 36" fill="${INK}" ${s}/>
+  <path d="M24 22 C21 26 20 28 24 29 C28 28 27 26 24 22 Z" fill="#9ccfe0" ${s}/>`;
+
+export const READY_ART = { wash, wrap, bag, door } as const;

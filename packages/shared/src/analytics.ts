@@ -153,10 +153,21 @@ export const LOCATIONS = [
   "out-of-area",
   "booking-closed",
   "thanks",
+  "ways",
+  "ways-mail-in",
+  "ways-gift",
   "other",
 ] as const;
 
-export const SECTIONS = ["hero", "how_it_works", "process_film", "pricing", "faq"] as const;
+export const SECTIONS = [
+  "hero",
+  "ways",
+  "how_it_works",
+  "process_film",
+  "pricing",
+  "prepare",
+  "faq",
+] as const;
 export type SectionId = (typeof SECTIONS)[number];
 
 /** Form fields, by identifier only. Values are never part of any event. */
