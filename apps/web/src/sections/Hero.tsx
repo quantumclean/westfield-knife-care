@@ -25,14 +25,14 @@ export function Hero({ offer, price, nextPickup, onBook, onPilot, onIntent }: He
         <div class="hero-copy">
           <p class="hero-kicker">
             <span class="stamp">Westfield, NJ</span>
-            <span>Picked up at your door · No shipping</span>
+            <span>Picked up and returned at your door</span>
           </p>
           <h1 id="hero-title">
             Good food starts with a <em>sharp knife.</em>
           </h1>
           <p class="hero-lede">
-            A fresh edge for your kitchen favourites. We pick up, sharpen, and bring your knives
-            home. You get back to the good part: cooking.
+            A fresh edge for your kitchen favourites. With local pickup, we collect your knives from
+            your door, sharpen them, and bring them back. You get back to the good part: cooking.
           </p>
 
           <div class="hero-ticket ticket">
@@ -76,9 +76,14 @@ export function Hero({ offer, price, nextPickup, onBook, onPilot, onIntent }: He
             </a>
           </div>
           <p class="hero-assure">See your total before you pay · Secure card payment via Stripe</p>
-          <button type="button" class="link-quiet" onClick={onPilot}>
-            or join the Always Sharp waitlist
-          </button>
+          <p class="hero-more">
+            <a class="link-quiet" href="#ways">
+              Mail-in or a gift? See your options
+            </a>
+            <button type="button" class="link-quiet" onClick={onPilot}>
+              or join the Always Sharp waitlist
+            </button>
+          </p>
         </div>
         <div class="hero-board">
           <CuttingBoard />

@@ -46,7 +46,7 @@ create (pending/scheduled/pending) → webhook paid → operator picked_up → o
 
 ## Waitlist entry
 
-`id, created_at, name, email, phone?, service_interest (sharpening | always_sharp | both), cadence (weekly | biweekly | monthly), notes?` plus the same experiment and attribution context as an order.
+`id, created_at, name, email, phone?, service_interest (sharpening | always_sharp | both | mail_in | gift), cadence (weekly | biweekly | monthly | once), notes?` plus the same experiment and attribution context as an order. `mail_in` and `gift` are interest-only entries (nothing can be bought yet) and always carry cadence `once`. The entry is stored as a JSON document, so the new values need no migration.
 
 ## Analytics event
 

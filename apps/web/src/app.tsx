@@ -1,5 +1,6 @@
 import type { ComponentType } from "preact";
 import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
+import type { InterestOnlyTopic } from "@wkc/shared";
 import { Button, Modal, Notice } from "@wkc/ui";
 import type { BookingDialogProps } from "./forms/BookingForm.tsx";
 import type { PilotFormProps, WaitlistPrefill } from "./forms/PilotForm.tsx";
@@ -13,8 +14,15 @@ import { Header } from "./sections/Header.tsx";
 import { Hero } from "./sections/Hero.tsx";
 import { HowItWorks } from "./sections/HowItWorks.tsx";
 import { LaunchVideo } from "./sections/LaunchVideo.tsx";
+import { Prep } from "./sections/Prep.tsx";
 import { Pricing } from "./sections/Pricing.tsx";
 import { StickyCta } from "./sections/StickyCta.tsx";
+import { Ways } from "./sections/Ways.tsx";
+
+const TOPIC_TITLES: Record<InterestOnlyTopic, string> = {
+  mail_in: "Interested in mail-in?",
+  gift: "Interested in gifts?",
+};
 
 type Dialog = "none" | "book" | "pilot";
 type PilotFormComponent = ComponentType<PilotFormProps>;
@@ -84,6 +92,10 @@ export function App({ session }: { session: Session }) {
     setDialog("pilot");
   };
 
+  /** Mail-in and gift are interest-only: the same waitlist, never a purchase. */
+  const openInterest = (topic: InterestOnlyTopic) =>
+    openPilot(topic === "mail_in" ? "ways-mail-in" : "ways-gift", { notes: "", interest: topic });
+
   useEffect(() => {
     // Deep links: /#book and /#pilot open the dialogs (used by flyers and emails).
     const fromHash = () => {
@@ -138,6 +150,14 @@ export function App({ session }: { session: Session }) {
           onPilot={() => openPilot("hero")}
           onIntent={prefetchQuietly}
         />
+        <Ways
+          price={experiment.price}
+          ctaLabel={experiment.offer.cta_primary}
+          nextPickup={nextPickup}
+          onBook={() => openBooking("ways")}
+          onInterest={openInterest}
+          onIntent={prefetchQuietly}
+        />
         <HowItWorks>
           <LaunchVideo />
         </HowItWorks>
@@ -146,6 +166,7 @@ export function App({ session }: { session: Session }) {
           onBook={() => openBooking("pricing")}
           onPilot={() => openPilot("pricing")}
         />
+        <Prep />
         <Faq />
       </main>
       <Footer experimentId={experiment.experiment.id} />
@@ -180,11 +201,21 @@ export function App({ session }: { session: Session }) {
       )}
       <Modal
         open={dialog === "pilot"}
-        title={pilotPrefill ? "Join the waitlist" : "Join the Always Sharp Pilot"}
+        title={
+          pilotPrefill?.interest
+            ? TOPIC_TITLES[pilotPrefill.interest]
+            : pilotPrefill
+              ? "Join the waitlist"
+              : "Join the Always Sharp Pilot"
+        }
         onClose={close}
       >
         {Pilot ? (
-          <Pilot session={session} prefill={pilotPrefill} key={pilotPrefill?.notes ?? "pilot"} />
+          <Pilot
+            session={session}
+            prefill={pilotPrefill}
+            key={pilotPrefill?.interest ?? pilotPrefill?.notes ?? "pilot"}
+          />
         ) : (
           <LoadState failed={loadFailed === "pilot"} reopen="pilot" />
         )}

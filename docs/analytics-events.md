@@ -67,7 +67,7 @@ or URLs.**
 | `pilot_submitted`    | waitlist entry saved                                                                                               | `cadence`, `interest`                                                              |                     | yes |
 | `faq_opened`         | an FAQ item expanded                                                                                               | `question`: FAQ id                                                                 | view, per question  | yes |
 | `form_error`         | client validation failed                                                                                           | `form`: booking, pilot; `fields`: field ids; `kinds`; `count` 0–20                 | max 20 per view     | no  |
-| `section_view`       | a landing section is substantially on screen                                                                       | `section`: hero, how_it_works, process_film, pricing, faq                          | view, per section   | yes |
+| `section_view`       | a landing section is substantially on screen                                                                       | `section`: hero, ways, how_it_works, process_film, pricing, prepare, faq           | view, per section   | yes |
 | `scroll_depth`       | scroll milestone reached (not while a dialog is open)                                                              | `percent`: 25, 50, 75, 90                                                          | view, per milestone | yes |
 | `page_engagement`    | first time the landing page is hidden or left                                                                      | `time`: <10s, 10-30s, 30-60s, 1-3m, 3m+; `max_scroll`                              | view                | no  |
 | `video_view`         | the process film starts playing                                                                                    | `trigger`: autoplay, click, play; `format`: standard, landscape, square            | view                | yes |
@@ -78,7 +78,10 @@ or URLs.**
 | `web_vitals`         | first time the page is hidden                                                                                      | `lcp`, `inp`, `cls`, `ttfb`: good, needs_improvement, poor; `nav`                  | view                | no  |
 
 - `location`: hero, nav, pricing, sticky, footer, deep-link, checkout-cancelled,
-  out-of-area, booking-closed, thanks, other.
+  out-of-area, booking-closed, thanks, ways (the pickup button in "Three ways"),
+  ways-mail-in and ways-gift (the interest-only buttons), other.
+- `pilot_submitted.interest` also takes `mail_in` and `gift`, with `cadence` `once`. These carry
+  no recipient, address or typed text; which card was used is all that is recorded.
 - Field ids (`fields`): name, email, phone, line1, line2, city, state, zip, notes, knives,
   care_day, service_interest, cadence, other. Validation paths such as
   `customer.address.zip` are mapped to these ids before sending.

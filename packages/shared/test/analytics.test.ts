@@ -110,6 +110,41 @@ describe("validateEventProps (server allowlist)", () => {
   });
 });
 
+describe("the three-ways interactions", () => {
+  it("counts the choice cards and interest forms with fixed vocabularies only", () => {
+    for (const location of ["ways", "ways-mail-in", "ways-gift"]) {
+      expect(validateEventProps("cta_click", { cta: "pilot", location })).toEqual([]);
+      expect(validateEventProps("pilot_opened", { location })).toEqual([]);
+    }
+    for (const section of ["ways", "prepare"]) {
+      expect(validateEventProps("section_view", { section })).toEqual([]);
+    }
+    for (const interest of ["mail_in", "gift"]) {
+      expect(validateEventProps("pilot_submitted", { cadence: "once", interest })).toEqual([]);
+    }
+  });
+
+  it("cannot carry a recipient, an address or any free text", () => {
+    for (const [name, props] of [
+      ["pilot_opened", { location: "ways-gift", recipient: "Ada Lovelace" }],
+      ["pilot_opened", { location: "12 Elm St, Westfield NJ 07090" }],
+      ["pilot_submitted", { cadence: "once", interest: "gift", recipient_email: "a@b.co" }],
+      ["pilot_submitted", { cadence: "once", interest: "gift for Ada" }],
+      ["cta_click", { cta: "pilot", location: "ways-gift", address: "1 Main St" }],
+    ] as const) {
+      expect(validateEventProps(name, props), name).not.toEqual([]);
+    }
+    // The browser-side normaliser drops them instead of sending them.
+    expect(normalizeEvent("pilot_opened", { location: "ways-gift", recipient: "Ada" })).toEqual({
+      name: "pilot_opened",
+      props: { location: "ways-gift" },
+    });
+    expect(normalizeEvent("pilot_opened", { location: "1 Main St, Westfield" })?.props).toEqual({
+      location: "other",
+    });
+  });
+});
+
 describe("normalizeEvent (browser)", () => {
   it("drops v1 identifiers and dates the catalog no longer carries", () => {
     expect(normalizeEvent("checkout_started", { order_id: "id-1", total_cents: 3900 })).toEqual({

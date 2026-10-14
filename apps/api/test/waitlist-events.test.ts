@@ -37,6 +37,79 @@ describe("POST /api/waitlist", () => {
     const res = await app.request("/api/waitlist", json("POST", { name: "x" }));
     expect(res.status).toBe(400);
   });
+
+  it("stores interest-only mail-in and gift entries, with no order and no payment", async () => {
+    const { app, deps } = makeDeps();
+    for (const service_interest of ["mail_in", "gift"] as const) {
+      const res = await app.request(
+        "/api/waitlist",
+        json("POST", {
+          experiment_id: "experiment-001",
+          name: "Ada Example",
+          email: "ada@example.com",
+          service_interest,
+          cadence: "once",
+          notes: "Roughly six knives.",
+        }),
+      );
+      expect(res.status, service_interest).toBe(201);
+    }
+    const entries = await deps.repo.listWaitlist();
+    expect(entries.map((e) => [e.service_interest, e.cadence]).sort()).toEqual([
+      ["gift", "once"],
+      ["mail_in", "once"],
+    ]);
+    // Interest only: nothing was ordered or charged.
+    expect(await deps.repo.listOrders()).toHaveLength(0);
+  });
+
+  it("still rejects an interest the site does not offer", async () => {
+    const { app } = makeDeps();
+    const res = await app.request(
+      "/api/waitlist",
+      json("POST", {
+        experiment_id: "experiment-001",
+        name: "Ada",
+        email: "ada@example.com",
+        service_interest: "overnight_shipping",
+        cadence: "once",
+      }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts the new interest events and rejects ones that smuggle in an address", async () => {
+    const { app } = makeDeps();
+    // A schema v2 batch: the strict path, where the shared catalog is the only allowlist.
+    let n = 0;
+    const send = (props: Record<string, unknown>) =>
+      app.request(
+        "/api/events",
+        json("POST", {
+          events: [
+            {
+              v: 2,
+              owner: "f".repeat(64),
+              event_id: `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`,
+              view_id: "11111111-2222-4333-8444-555555555555",
+              experiment_id: "experiment-001",
+              source: "direct",
+              acquisition_channel: "direct",
+              visitor_id: "00000000-0000-4000-8000-00000000000a",
+              route: "/a",
+              device: "mobile",
+              viewport: "xs",
+              name: "pilot_opened",
+              props,
+            },
+          ],
+        }),
+      );
+    expect((await send({ location: "ways-gift" })).status).toBe(204);
+    expect((await send({ location: "ways-mail-in" })).status).toBe(204);
+    expect((await send({ location: "ways-gift", address: "1 Main St" })).status).toBe(400);
+    expect((await send({ location: "12 Elm St, Westfield" })).status).toBe(400);
+  });
 });
 
 describe("POST /api/events and GET /api/admin/summary", () => {

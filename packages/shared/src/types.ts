@@ -178,10 +178,19 @@ export interface Order {
   refunded_amount_cents?: number;
 }
 
-export const SERVICE_INTERESTS = ["sharpening", "always_sharp", "both"] as const;
+/**
+ * What a waitlist entry is interested in. `mail_in` and `gift` are interest-only: neither can
+ * be bought yet, and a gift is a way to pay for someone's sharpening, not a way to hand over knives.
+ */
+export const SERVICE_INTERESTS = ["sharpening", "always_sharp", "both", "mail_in", "gift"] as const;
 export type ServiceInterest = (typeof SERVICE_INTERESTS)[number];
 
-export const CADENCES = ["weekly", "biweekly", "monthly"] as const;
+/** Interests that are collected by a dedicated "tell us you're interested" form. */
+export const INTEREST_ONLY_TOPICS = ["mail_in", "gift"] as const;
+export type InterestOnlyTopic = (typeof INTEREST_ONLY_TOPICS)[number];
+
+/** `once` is for interest entries that have no repeat rhythm (mail-in, gift). */
+export const CADENCES = ["weekly", "biweekly", "monthly", "once"] as const;
 export type Cadence = (typeof CADENCES)[number];
 
 /** Always Sharp pilot waitlist signup. */
