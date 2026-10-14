@@ -62,6 +62,78 @@ export const L2_PASSIVE_WEAR = 0.15; // per second
 export const L2_CUT_WEAR = 0.3;
 export const GLINT_EDGE = 10;
 
+/* ---------- Knife styles and Hardcore ---------- */
+
+export type KnifeId = "japanese" | "german" | "american" | "swiss";
+
+/**
+ * Game-feel modifiers per knife style. These are game stats only, not claims
+ * about real knives.
+ * - speed: multiplies the minimum swipe speeds (lower = cuts with gentler swipes)
+ * - wear: multiplies edge wear from cuts
+ * - hazard: multiplies the edge a hazard takes
+ * - slop: multiplies the hit radius
+ */
+export const KNIVES: Record<
+  KnifeId,
+  { speed: number; wear: number; hazard: number; slop: number }
+> = {
+  japanese: { speed: 0.85, wear: 1.25, hazard: 1.5, slop: 1 },
+  german: { speed: 1.12, wear: 0.8, hazard: 0.8, slop: 1 },
+  american: { speed: 1, wear: 1, hazard: 1, slop: 1 },
+  swiss: { speed: 0.95, wear: 1.1, hazard: 1, slop: 1.12 },
+};
+export const KNIFE_ORDER: readonly KnifeId[] = ["japanese", "german", "american", "swiss"];
+
+/** Hardcore: Level 1 is shorter and the edge never leaves Gone; Level 2 is busier. */
+export const HARDCORE = {
+  l1Share: 0.6,
+  l1EdgeCap: 10,
+  l2SpawnRate: 1.2,
+  l2HazardWear: 1.5,
+} as const;
+
+/* ---------- Street mode ---------- */
+
+export const STREET = {
+  /** Walking speed in world units (tiles) per second. */
+  walk: { level1: 1.3, level2: 1.9 },
+  hardcoreWalk: 1.15,
+  gravity: { level1: 2.4, level2: 2.9 },
+  /** Seconds from leaving an alley to reaching the cut zone. */
+  flight: [1.15, 1.45],
+  /** Street fruit is drawn bigger than on the counter, so it reads on a phone. */
+  fruitScale: 1.5,
+  /** Where thrown fruit is aimed: depth ahead of the walker, and height. */
+  targetDepth: [1.15, 1.6],
+  targetHeight: [0.22, 0.5],
+  /** Alleys this far ahead can throw. */
+  spawnDepth: [3.2, 7.5],
+  /** Fruit can be cut between these depths. */
+  cutDepth: [0.45, 5.5],
+  /** Spawn rate relative to the counter's tables (throws take longer to arrive). */
+  rate: 0.9,
+  /** Reduced motion: hold each view this long, then cut this far along the route. */
+  stillHold: 7,
+  stillStep: 6,
+  customer: {
+    max: 2,
+    gap: [2.5, 4.5],
+    depth: [5, 9.5],
+    height: 0.95,
+    width: 0.5,
+    /** Neighbors step this far out of their doorway onto the sidewalk, at this speed. */
+    stepOut: 1.25,
+    stepSpeed: 1.6,
+    /** Dates needed before a yes, per level (inclusive range). */
+    need: { level1: [1, 3], level2: [1, 2] },
+  },
+  points: { yes: 100, persist: 5 },
+  replyDelay: 0.35,
+  replyShow: 1.9,
+  askCooldown: 0.7,
+} as const;
+
 /* ---------- Lengths ---------- */
 
 export type LengthMode = "quick" | "full";

@@ -11,8 +11,10 @@ import {
   COMBO_WINDOW,
   EDGE_GONE_SECONDS,
   GLINT_EDGE,
+  HARDCORE,
   HAZARD_WEAR,
   INGREDIENTS,
+  KNIVES,
   L1_CUT_WEAR,
   L1_HARD_STOP,
   L1_OVERTIME,
@@ -34,6 +36,7 @@ import {
   Z_LAND,
   Z_STILL,
   type IngredientId,
+  type KnifeId,
   type LevelSpec,
   type SpawnPhase,
 } from "../levels.ts";
@@ -50,6 +53,10 @@ export interface WorldConfig {
   l2Seconds: number;
   reducedMotion: boolean;
   seed: number;
+  /** Knife style (game-feel modifiers). Defaults to the all-rounder. */
+  knife?: KnifeId;
+  /** Hardcore: nothing cuts in Level 1 until pickup, sharpening and return. */
+  hardcore?: boolean;
 }
 
 export interface Item {
@@ -106,7 +113,11 @@ export type GameEvent =
   | { type: "warn"; at: 50 | 25 }
   | { type: "phase"; phase: Phase }
   | { type: "sharpen"; edge: number; stroke: number }
-  | { type: "restored" };
+  | { type: "restored" }
+  /* Street mode: proposals to neighbors. */
+  | { type: "propose"; id: number }
+  | { type: "reply"; id: number; yes: boolean; line: number }
+  | { type: "date"; id: number; x: number; y: number };
 
 interface Stroke {
   id: number;
@@ -200,7 +211,7 @@ export function createWorld(cfg: WorldConfig): World {
 
 /* ---------- Phases ---------- */
 
-function setPhase(w: World, phase: Phase): void {
+export function setPhase(w: World, phase: Phase): void {
   w.phase = phase;
   w.phaseT = 0;
   w.events.push({ type: "phase", phase });
@@ -273,7 +284,7 @@ export function advance(w: World, action: Action): void {
   }
 }
 
-function enterSharpen(w: World): void {
+export function enterSharpen(w: World): void {
   w.edge = 0;
   w.band = "gone";
   w.sharpen = 0;
@@ -314,23 +325,38 @@ export function level1Edge(t: number, length: number, cutWear: number): number {
   return clamp(100 - timeWear - cutWear, 0, 100);
 }
 
-function levelLength(w: World): number {
-  return w.level === 1 ? w.cfg.l1Seconds : w.cfg.l2Seconds;
+export function knifeOf(w: World) {
+  return KNIVES[w.cfg.knife ?? "american"];
 }
 
-function levelSpec(w: World): LevelSpec {
+/** Level 1's effective length: shorter in Hardcore. */
+function l1Length(w: World): number {
+  return w.cfg.hardcore ? w.cfg.l1Seconds * HARDCORE.l1Share : w.cfg.l1Seconds;
+}
+
+/** Level 1's edge for this world, including Hardcore's cap. */
+function l1EdgeNow(w: World): number {
+  const e = level1Edge(w.phaseT, l1Length(w), w.cutWear);
+  return w.cfg.hardcore ? Math.min(e, HARDCORE.l1EdgeCap) : e;
+}
+
+export function levelLength(w: World): number {
+  return w.level === 1 ? l1Length(w) : w.cfg.l2Seconds;
+}
+
+export function levelSpec(w: World): LevelSpec {
   return w.level === 1 ? LEVEL1 : LEVEL2;
 }
 
-function updateEdge(w: World, dt: number): void {
-  if (w.level === 1) w.edge = level1Edge(w.phaseT, w.cfg.l1Seconds, w.cutWear);
+export function updateEdge(w: World, dt: number): void {
+  if (w.level === 1) w.edge = l1EdgeNow(w);
   else w.edge = clamp(w.edge - L2_PASSIVE_WEAR * dt, 0, 100);
   const band = bandOf(w.edge);
   if (band !== w.band) {
     w.band = band;
     w.events.push({ type: "band", band });
   }
-  if (w.level === 1) {
+  if (w.level === 1 && !w.cfg.hardcore) {
     if (w.edge < 50 && !(w.warned & 1)) {
       w.warned |= 1;
       w.events.push({ type: "warn", at: 50 });
@@ -343,11 +369,12 @@ function updateEdge(w: World, dt: number): void {
 }
 
 function wear(w: World, kind: IngredientId): void {
+  const k = knifeOf(w).wear;
   if (w.level === 1) {
-    w.cutWear += L1_CUT_WEAR[INGREDIENTS[kind].tough] * (45 / w.cfg.l1Seconds);
-    w.edge = level1Edge(w.phaseT, w.cfg.l1Seconds, w.cutWear);
+    w.cutWear += L1_CUT_WEAR[INGREDIENTS[kind].tough] * (45 / w.cfg.l1Seconds) * k;
+    w.edge = l1EdgeNow(w);
   } else {
-    w.edge = clamp(w.edge - L2_CUT_WEAR, 0, 100);
+    w.edge = clamp(w.edge - L2_CUT_WEAR * k, 0, 100);
   }
 }
 
@@ -374,6 +401,23 @@ export function step(w: World, dt: number, cam: Camera): void {
       break;
     case "edgeGone":
       moveItems(w, simDt);
+      serviceStep(w, simDt);
+      break;
+    default:
+      serviceStep(w, simDt);
+      break;
+  }
+  void still;
+}
+
+/**
+ * Timers for the edge-gone pause and the pickup, sharpening and return beats.
+ * Shared with Street mode, which has the same story beats.
+ */
+export function serviceStep(w: World, simDt: number): void {
+  const still = w.cfg.reducedMotion;
+  switch (w.phase) {
+    case "edgeGone":
       if (w.phaseT >= EDGE_GONE_SECONDS) {
         w.items = [];
         setPhase(w, "pickup");
@@ -406,7 +450,7 @@ function playStep(w: World, dt: number, cam: Camera): void {
     while (w.spawnT <= 0 && guard++ < 4) {
       const ph = spawnPhase(spec, w.phaseT / length);
       spawnGroup(w, ph);
-      w.spawnT += (0.85 + 0.3 * rand(w)) / ph.rate;
+      w.spawnT += (0.85 + 0.3 * rand(w)) / (ph.rate * spawnRateMult(w));
     }
   }
   moveItems(w, dt);
@@ -438,12 +482,16 @@ function playStep(w: World, dt: number, cam: Camera): void {
   }
 }
 
+export function spawnRateMult(w: World): number {
+  return w.cfg.hardcore && w.level === 2 ? HARDCORE.l2SpawnRate : 1;
+}
+
 export function spawnPhase(spec: LevelSpec, progress: number): SpawnPhase {
   for (const ph of spec.phases) if (progress < ph.until) return ph;
   return spec.phases[spec.phases.length - 1]!;
 }
 
-function rand(w: World): number {
+export function rand(w: World): number {
   return nextRandom(w.rng);
 }
 
@@ -457,7 +505,7 @@ function laneU(w: World): number {
   return u;
 }
 
-function pick<T>(w: World, list: readonly T[]): T {
+export function pick<T>(w: World, list: readonly T[]): T {
   return list[Math.floor(rand(w) * list.length) % list.length]!;
 }
 
@@ -594,7 +642,7 @@ function canCut(w: World): boolean {
   return w.phase === "level1" || w.phase === "level2" || w.phase === "edgeGone";
 }
 
-function openStroke(w: World): void {
+export function openStroke(w: World): void {
   w.stroke.id = ++w.strokeSeq;
   w.stroke.open = true;
   w.stroke.cuts = 0;
@@ -607,7 +655,7 @@ export function endStroke(w: World): void {
   w.stroke.open = false;
 }
 
-function resolveCombo(w: World, force: boolean): void {
+export function resolveCombo(w: World, force: boolean): void {
   const s = w.stroke;
   if (s.cuts === 0) return;
   if (!force && w.clock - s.lastCut < COMBO_WINDOW) return;
@@ -623,7 +671,7 @@ function resolveCombo(w: World, force: boolean): void {
   s.points = 0;
 }
 
-function addScore(w: World, points: number): void {
+export function addScore(w: World, points: number): void {
   w.score += points;
   if (w.level === 1) w.l1Score += points;
   else w.l2Score += points;
@@ -652,7 +700,7 @@ export function slice(w: World, cam: Camera, a: Pt, b: Pt, dtMs: number): number
     const p = itemScreen(cam, it, tmp);
     const r = INGREDIENTS[it.kind].radius * p.s;
     const d = distanceToSegment(a, b, p);
-    if (d > r * HIT_SLOP) continue;
+    if (d > r * HIT_SLOP * knifeOf(w).slop) continue;
     it.lastStroke = w.stroke.id;
     hits++;
     hitItem(w, it, p.x, p.y, r, speed, angle, dx, dy, d <= r * CLEAN_SHARE);
@@ -660,7 +708,11 @@ export function slice(w: World, cam: Camera, a: Pt, b: Pt, dtMs: number): number
   return hits;
 }
 
-function hitItem(
+/**
+ * Applies one stroke to one item: edge rules, scoring, wear and the event.
+ * Returns the outcome (or the hazard and pickup cases). Shared with Street mode.
+ */
+export function hitItem(
   w: World,
   it: Item,
   x: number,
@@ -671,7 +723,7 @@ function hitItem(
   dx: number,
   dy: number,
   clean: boolean,
-): void {
+): CutOutcome | "hazard" | "pickup" | "none" {
   const ing = INGREDIENTS[it.kind];
   const still = w.cfg.reducedMotion;
   const side = dx >= 0 ? 1 : -1;
@@ -681,30 +733,33 @@ function hitItem(
     if (it.hits > 1) {
       it.hurtAt = w.clock;
       w.events.push({ type: "clang", x, y, r });
-      return;
+      return "hazard";
     }
+    const mult = knifeOf(w).hazard;
     if (w.level === 1) {
-      w.cutWear += HAZARD_WEAR.level1;
-      w.edge = level1Edge(w.phaseT, w.cfg.l1Seconds, w.cutWear);
+      w.cutWear += HAZARD_WEAR.level1 * mult;
+      w.edge = l1EdgeNow(w);
     } else {
-      w.edge = clamp(w.edge - HAZARD_WEAR.level2, 0, 100);
+      const hard = w.cfg.hardcore ? HARDCORE.l2HazardWear : 1;
+      w.edge = clamp(w.edge - HAZARD_WEAR.level2 * mult * hard, 0, 100);
     }
     w.streak = 0;
     it.hurtAt = w.clock;
     if (!still) it.vy = Math.max(it.vy, 0) + 1.2;
     it.vspin += side * 7;
     w.events.push({ type: "clang", x, y, r });
-    return;
+    return "hazard";
   }
   if (ing.tough === "pickup") {
     w.edge = clamp(w.edge + GLINT_EDGE, 0, 100);
     it.gone = true;
     w.events.push({ type: "glint", x, y, r });
-    return;
+    return "pickup";
   }
   const band = bandOf(w.edge);
-  const res = cutOutcome(band, ing.tough, speed, it.hits);
-  if (res.outcome === "none") return;
+  // A knife that cuts with gentler swipes is the same as a faster swipe.
+  const res = cutOutcome(band, ing.tough, speed / knifeOf(w).speed, it.hits);
+  if (res.outcome === "none") return "none";
   let points = 0;
   switch (res.outcome) {
     case "split":
@@ -767,6 +822,7 @@ function hitItem(
     speed,
     band,
   });
+  return res.outcome;
 }
 
 /** A horizontal cut straight through one item, at a fixed speed. */

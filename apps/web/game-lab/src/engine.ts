@@ -5,8 +5,9 @@
  */
 import { trailPath, type Pt } from "../../src/toy/geometry.ts";
 import type { Sfx } from "./audio.ts";
+import type { EngineCallbacks, EngineOptions, GameEngine } from "./engine-api.ts";
 import { PointerInput, TRAIL_LIFE } from "./input.ts";
-import { INGREDIENTS, type IngredientId } from "./levels.ts";
+import { INGREDIENTS, type IngredientId, type KnifeId } from "./levels.ts";
 import { Fx } from "./render/fx.ts";
 import {
   benchEdgePoint,
@@ -40,17 +41,7 @@ import {
   type WorldConfig,
 } from "./sim/world.ts";
 
-export interface EngineCallbacks {
-  onPhase(phase: Phase): void;
-  /** Every frame, for the HUD (which writes to the DOM directly, not via Preact). */
-  onFrame(world: World): void;
-  onEvent(e: GameEvent): void;
-}
-
-export interface EngineOptions {
-  /** Time multiplier for playtesting and tests (?speed=4). */
-  speed: number;
-}
+export type { EngineCallbacks, EngineOptions };
 
 const TRAIL_STYLE: Record<Band, { width: number; color: string; glow: string }> = {
   keen: { width: 12, color: "rgba(255,255,255,0.95)", glow: "rgba(170,230,255,0.9)" },
@@ -61,7 +52,8 @@ const TRAIL_STYLE: Record<Band, { width: number; color: string; glow: string }> 
 
 const tmp: Projected = { x: 0, y: 0, s: 0 };
 
-export class Engine {
+/** Classic mode: the kitchen counter. */
+export class Engine implements GameEngine {
   world: World;
   cam: Camera;
   fx: Fx;
@@ -176,6 +168,14 @@ export class Engine {
     this.world.cfg.l1Seconds = l1;
     this.world.cfg.l2Seconds = l2;
   }
+
+  configure(options: { knife: KnifeId; hardcore: boolean }): void {
+    this.world.cfg.knife = options.knife;
+    this.world.cfg.hardcore = options.hardcore;
+  }
+
+  /** Classic has no neighbors to propose to. */
+  propose(): void {}
 
   /** Start (or restart) from Level 1. */
   start(): void {

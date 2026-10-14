@@ -25,7 +25,11 @@ export type Sound =
   | "start1"
   | "start2"
   | "gone"
-  | "results";
+  | "results"
+  | "propose"
+  | "no"
+  | "yes"
+  | "date";
 
 export class Sfx {
   private ctx: AudioContext | null = null;

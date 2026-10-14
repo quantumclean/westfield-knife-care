@@ -2,19 +2,23 @@ import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { Sfx } from "./audio.ts";
 import { COPY } from "./copy.ts";
 import { Engine } from "./engine.ts";
-import { LENGTHS, type LengthMode } from "./levels.ts";
+import type { GameEngine } from "./engine-api.ts";
+import { KNIFE_ORDER, LENGTHS, type KnifeId, type LengthMode } from "./levels.ts";
 import {
   effectiveReducedMotion,
   loadBest,
   loadPrefs,
   saveBest,
   savePrefs,
+  type GameMode,
   type MotionPref,
   type Prefs,
 } from "./prefs.ts";
-import { loadSprites } from "./render/sprites.ts";
+import { loadSprites, type Sprites } from "./render/sprites.ts";
 import type { Band } from "./sim/edge.ts";
 import type { GameEvent, Phase, World } from "./sim/world.ts";
+import { StreetEngine } from "./street/engine.ts";
+import type { StreetWorld } from "./street/world.ts";
 
 type Ui = "loading" | "title" | "tutorial" | "game";
 
@@ -26,7 +30,12 @@ interface Results {
   bestStreak: number;
   best: number;
   newBest: boolean;
+  /** Street mode only. */
+  proposals?: number;
+  yeses?: number;
 }
+
+const isStreet = (w: World): w is StreetWorld => "proposals" in w;
 
 const ACTIVE: readonly Phase[] = ["level1", "level2", "edgeGone", "sharpen", "pickup", "return"];
 
@@ -46,6 +55,11 @@ function initialPrefs(params: URLSearchParams): Prefs {
   const motion = params.get("motion");
   if (motion === "reduce" || motion === "full" || motion === "system") p.motion = motion;
   if (params.has("muted")) p.muted = true;
+  const mode = params.get("mode");
+  if (mode === "street" || mode === "classic") p.mode = mode;
+  const knife = params.get("knife");
+  if (KNIFE_ORDER.includes(knife as KnifeId)) p.knife = knife as KnifeId;
+  if (params.has("hardcore")) p.hardcore = params.get("hardcore") !== "0";
   return p;
 }
 
@@ -62,7 +76,8 @@ const MOTION_LABEL: Record<MotionPref, string> = {
 
 export function GameLab({ params }: { params: URLSearchParams }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const engineRef = useRef<Engine | null>(null);
+  const engineRef = useRef<GameEngine | null>(null);
+  const [sprites, setSprites] = useState<Sprites | null>(null);
   const sfx = useMemo(() => new Sfx(), []);
   const [prefs, setPrefs] = useState<Prefs>(() => initialPrefs(params));
   const [ui, setUi] = useState<Ui>("loading");
@@ -73,6 +88,7 @@ export function GameLab({ params }: { params: URLSearchParams }) {
   const [results, setResults] = useState<Results | null>(null);
   const [failed, setFailed] = useState(false);
   const reduced = effectiveReducedMotion(prefs);
+  const street = prefs.mode === "street";
 
   // HUD nodes, written every frame without re-rendering.
   const meterRef = useRef<HTMLDivElement>(null);
@@ -84,6 +100,7 @@ export function GameLab({ params }: { params: URLSearchParams }) {
   const timerRef = useRef<HTMLSpanElement>(null);
   const streakRef = useRef<HTMLSpanElement>(null);
   const hintRef = useRef<HTMLParagraphElement>(null);
+  const askedRef = useRef<HTMLSpanElement>(null);
   const liveRef = useRef<HTMLParagraphElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const last = useRef({
@@ -95,6 +112,7 @@ export function GameLab({ params }: { params: URLSearchParams }) {
     score: -1,
     timer: "",
     streak: "",
+    asked: "",
     hint: false,
   });
 
@@ -153,6 +171,11 @@ export function GameLab({ params }: { params: URLSearchParams }) {
       l.streak = streak;
       if (streakRef.current) streakRef.current.textContent = streak;
     }
+    const asked = isStreet(w) ? COPY.asked(w.proposals, w.yeses) : "";
+    if (asked !== l.asked) {
+      l.asked = asked;
+      if (askedRef.current) askedRef.current.textContent = asked;
+    }
     const hint = w.phase === "level1" && w.cuts === 0 && w.phaseT < 15;
     if (hint !== l.hint) {
       l.hint = hint;
@@ -163,8 +186,9 @@ export function GameLab({ params }: { params: URLSearchParams }) {
   function onPhase(p: Phase) {
     setPhase(p);
     const w = engineRef.current?.world;
-    if (p === "level1") announce(COPY.level1);
-    if (p === "level2") announce(COPY.level2);
+    const street = prefsRef.current.mode === "street";
+    if (p === "level1") announce(street ? COPY.walk1 : COPY.level1);
+    if (p === "level2") announce(street ? COPY.walk2 : COPY.level2);
     if (p === "edgeGone") announce(`${COPY.edgeGoneHead} ${COPY.edgeGoneBody}`);
     if (p === "pickup") announce(`${COPY.pickupHead}. ${COPY.pickupBody}`);
     if (p === "sharpen") {
@@ -184,6 +208,7 @@ export function GameLab({ params }: { params: URLSearchParams }) {
         bestStreak: w.bestStreak,
         best: Math.max(best, w.score),
         newBest,
+        ...(isStreet(w) ? { proposals: w.proposals, yeses: w.yeses } : {}),
       });
       announce(`${COPY.resultsHead}. ${COPY.total} ${w.score}.`);
     }
@@ -196,45 +221,59 @@ export function GameLab({ params }: { params: URLSearchParams }) {
     } else if (e.type === "warn") announce(e.at === 50 ? COPY.warnHalf : COPY.warnLow);
   }
 
-  // Load sprites, then build the engine once.
+  // Load the art once.
   useEffect(() => {
     let cancelled = false;
-    let engine: Engine | null = null;
     loadSprites()
-      .then((sprites) => {
-        if (cancelled || !canvasRef.current) return;
-        const p = prefsRef.current;
-        const len = lengthsFor(p.length, params);
-        engine = new Engine(
-          canvasRef.current,
-          sprites,
-          sfx,
-          {
-            l1Seconds: len.l1,
-            l2Seconds: len.l2,
-            reducedMotion: effectiveReducedMotion(p),
-            seed: Number(params.get("seed")) || Math.floor(Math.random() * 1e9),
-          },
-          { onPhase, onFrame: updateHud, onEvent },
-          { speed },
-        );
-        engineRef.current = engine;
-        sfx.setMuted(p.muted);
-        if (params.has("test")) {
-          (window as unknown as { __gameLab: unknown }).__gameLab = {
-            state: () => engine?.debug(),
-            sharpen: () => engine?.sharpen(),
-          };
-        }
-        setUi("title");
+      .then((s) => {
+        if (!cancelled) setSprites(s);
       })
       .catch(() => setFailed(true));
     return () => {
       cancelled = true;
-      engine?.destroy();
       sfx.close();
     };
-  }, []);
+  }, [sfx]);
+
+  // Build the engine for the chosen mode (again whenever the mode changes).
+  useEffect(() => {
+    if (!sprites || !canvasRef.current) return;
+    const p = prefsRef.current;
+    const len = lengthsFor(p.length, params);
+    const cfg = {
+      l1Seconds: len.l1,
+      l2Seconds: len.l2,
+      reducedMotion: effectiveReducedMotion(p),
+      seed: Number(params.get("seed")) || Math.floor(Math.random() * 1e9),
+      knife: p.knife,
+      hardcore: p.hardcore,
+    };
+    const callbacks = { onPhase, onFrame: updateHud, onEvent };
+    let engine: GameEngine;
+    try {
+      engine =
+        p.mode === "street"
+          ? new StreetEngine(canvasRef.current, sprites, sfx, cfg, callbacks, { speed })
+          : new Engine(canvasRef.current, sprites, sfx, cfg, callbacks, { speed });
+    } catch {
+      setFailed(true);
+      return;
+    }
+    engineRef.current = engine;
+    sfx.setMuted(p.muted);
+    if (params.has("test")) {
+      (window as unknown as { __gameLab: unknown }).__gameLab = {
+        mode: p.mode,
+        state: () => engine.debug(),
+        sharpen: () => engine.sharpen(),
+      };
+    }
+    setUi((u) => (u === "loading" ? "title" : u));
+    return () => {
+      engine.destroy();
+      if (engineRef.current === engine) engineRef.current = null;
+    };
+  }, [sprites, prefs.mode]);
 
   // Pause on hide and on losing focus, mid-game.
   useEffect(() => {
@@ -295,6 +334,7 @@ export function GameLab({ params }: { params: URLSearchParams }) {
       else if (k === "ArrowDown" || k === "s" || k === "S" || k === "2") engine.lane(1);
       else if (k === "ArrowRight" || k === "d" || k === "D" || k === "3") engine.lane(2);
       else if (k === " ") engine.sweep();
+      else if (k === "Enter" || k === "e" || k === "E") engine.propose();
       else handled = false;
       if (handled) e.preventDefault();
     };
@@ -312,6 +352,7 @@ export function GameLab({ params }: { params: URLSearchParams }) {
     sfx.unlock();
     const len = lengthsFor(prefs.length, params);
     engine.setLengths(len.l1, len.l2);
+    engine.configure({ knife: prefs.knife, hardcore: prefs.hardcore });
     engine.setReducedMotion(reduced);
     setResults(null);
     setPaused(false);
@@ -321,7 +362,7 @@ export function GameLab({ params }: { params: URLSearchParams }) {
 
   function onStart() {
     sfx.unlock();
-    if (!prefs.seenTutorial) {
+    if (!(street ? prefs.seenStreet : prefs.seenTutorial)) {
       setTip(0);
       setUi("tutorial");
     } else begin();
@@ -351,6 +392,8 @@ export function GameLab({ params }: { params: URLSearchParams }) {
   };
 
   const inGame = ui === "game";
+  const tutorial = street ? COPY.streetTutorial : COPY.tutorial;
+  const tutorialArt = street ? (STREET_ART[tip] ?? 0) : tip;
   const showHud =
     inGame &&
     (phase === "level1" || phase === "level2" || phase === "edgeGone" || phase === "sharpen");
@@ -418,17 +461,22 @@ export function GameLab({ params }: { params: URLSearchParams }) {
         </div>
         <div class="gl-sub">
           <span class="gl-level">
-            {phase === "level2"
-              ? COPY.level2
-              : phase === "sharpen"
-                ? COPY.sharpenHead
-                : COPY.level1}
+            {phase === "sharpen"
+              ? COPY.sharpenHead
+              : phase === "level2"
+                ? street
+                  ? COPY.walk2
+                  : COPY.level2
+                : street
+                  ? COPY.walk1
+                  : COPY.level1}
           </span>
           <span class="gl-timer" ref={timerRef} />
+          <span class="gl-asked" ref={askedRef} />
           <span class="gl-streak" ref={streakRef} />
         </div>
         <p class="gl-hint" ref={hintRef}>
-          {COPY.hint}
+          {street ? COPY.streetHint : COPY.hint}
         </p>
       </div>
 
@@ -447,6 +495,53 @@ export function GameLab({ params }: { params: URLSearchParams }) {
               {COPY.start}
             </button>
             <div class="gl-settings">
+              <div class="gl-setting" role="group" aria-label={COPY.mode}>
+                <span>{COPY.mode}</span>
+                <div class="gl-seg">
+                  {(["street", "classic"] as const).map((m: GameMode) => (
+                    <button
+                      type="button"
+                      key={m}
+                      aria-pressed={prefs.mode === m}
+                      onClick={() => update({ mode: m })}
+                    >
+                      {m === "street" ? COPY.modeStreet : COPY.modeClassic}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div class="gl-setting gl-knife">
+                <label for="gl-knife">{COPY.knife}</label>
+                <select
+                  id="gl-knife"
+                  value={prefs.knife}
+                  onChange={(e) =>
+                    update({ knife: (e.target as HTMLSelectElement).value as KnifeId })
+                  }
+                >
+                  {KNIFE_ORDER.map((k) => (
+                    <option key={k} value={k}>
+                      {COPY.knives[k].name}
+                    </option>
+                  ))}
+                </select>
+                <p class="gl-hint-text">
+                  {COPY.knives[prefs.knife].full}: {COPY.knives[prefs.knife].blurb}.{" "}
+                  {COPY.knifeNote}
+                </p>
+              </div>
+              <div class="gl-setting gl-hardcore">
+                <span>{COPY.hardcore}</span>
+                <button
+                  type="button"
+                  class="gl-toggle"
+                  aria-pressed={prefs.hardcore}
+                  onClick={() => update({ hardcore: !prefs.hardcore })}
+                >
+                  {prefs.hardcore ? COPY.on : COPY.off}
+                </button>
+                {prefs.hardcore && <p class="gl-hint-text">{COPY.hardcoreBody}</p>}
+              </div>
               <div class="gl-setting" role="group" aria-label={COPY.length}>
                 <span>{COPY.length}</span>
                 <div class="gl-seg">
@@ -501,15 +596,15 @@ export function GameLab({ params }: { params: URLSearchParams }) {
 
         {ui === "tutorial" && (
           <div class="gl-card gl-tutorial">
-            <TutorialArt step={tip} />
-            <h2>{COPY.tutorial[tip]!.head}</h2>
-            <p>{COPY.tutorial[tip]!.body}</p>
+            <TutorialArt step={tutorialArt} />
+            <h2>{tutorial[tip]!.head}</h2>
+            <p>{tutorial[tip]!.body}</p>
             <div class="gl-dots" aria-hidden="true">
-              {COPY.tutorial.map((_, i) => (
+              {tutorial.map((_, i) => (
                 <span key={i} class={i === tip ? "is-on" : ""} />
               ))}
             </div>
-            {tip < COPY.tutorial.length - 1 ? (
+            {tip < tutorial.length - 1 ? (
               <button
                 type="button"
                 class="gl-btn gl-primary"
@@ -524,7 +619,7 @@ export function GameLab({ params }: { params: URLSearchParams }) {
                 class="gl-btn gl-primary"
                 data-primary
                 onClick={() => {
-                  update({ seenTutorial: true });
+                  update(street ? { seenStreet: true } : { seenTutorial: true });
                   begin();
                 }}
               >
@@ -631,14 +726,22 @@ export function GameLab({ params }: { params: URLSearchParams }) {
             </p>
             {results.newBest && <p class="gl-best">{COPY.newBest}</p>}
             <dl>
-              <dt>{COPY.level1Score}</dt>
+              <dt>{street ? COPY.walk1Score : COPY.level1Score}</dt>
               <dd>{results.l1}</dd>
-              <dt>{COPY.level2Score}</dt>
+              <dt>{street ? COPY.walk2Score : COPY.level2Score}</dt>
               <dd>{results.l2}</dd>
               <dt>{COPY.bestCombo}</dt>
               <dd>{results.bestCombo > 1 ? COPY.combo(results.bestCombo) : "—"}</dd>
               <dt>{COPY.bestStreak}</dt>
               <dd>{results.bestStreak}</dd>
+              {results.proposals !== undefined && (
+                <>
+                  <dt>{COPY.proposals}</dt>
+                  <dd>{results.proposals}</dd>
+                  <dt>{COPY.yeses}</dt>
+                  <dd>{results.yeses}</dd>
+                </>
+              )}
               <dt>{COPY.best}</dt>
               <dd>{results.best}</dd>
             </dl>
@@ -723,7 +826,33 @@ function Beats({ at }: { at: number }) {
   );
 }
 
+/** Street tutorial cards → art: fruit, meter, proposal ring, sharp knife. */
+const STREET_ART = [0, 1, 3, 2] as const;
+
 function TutorialArt({ step }: { step: number }) {
+  if (step === 3)
+    return (
+      <svg class="gl-tut-art" viewBox="0 0 160 80" aria-hidden="true">
+        <rect
+          x="58"
+          y="40"
+          width="44"
+          height="28"
+          rx="6"
+          fill="#b2432a"
+          stroke="#1f2620"
+          stroke-width="2.6"
+        />
+        <circle cx="80" cy="30" r="12" fill="none" stroke="#f2c94c" stroke-width="5" />
+        <path d="M80,8 L87,15 L80,22 L73,15 Z" fill="#e8f6ff" stroke="#1f2620" stroke-width="1.6" />
+        <path
+          d="M118,30 C112,18 124,12 128,22 C132,12 144,18 138,30 L128,42 Z"
+          fill="#e2482d"
+          stroke="#1f2620"
+          stroke-width="2"
+        />
+      </svg>
+    );
   if (step === 0)
     return (
       <svg class="gl-tut-art" viewBox="0 0 160 80" aria-hidden="true">

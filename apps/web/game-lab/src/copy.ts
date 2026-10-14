@@ -26,6 +26,77 @@ export const COPY = {
   loading: "Setting the counter…",
   prototype: "Prototype. Nothing you do here is sent anywhere.",
 
+  mode: "Game",
+  modeStreet: "Street",
+  modeClassic: "Classic",
+  knife: "Knife",
+  knives: {
+    japanese: {
+      name: "Japanese",
+      full: "Japanese gyuto",
+      blurb: "cuts with lighter swipes, wears faster",
+    },
+    german: {
+      name: "German",
+      full: "German chef's knife",
+      blurb: "wears slower, wants a firmer swipe",
+    },
+    american: { name: "American", full: "American chef's knife", blurb: "middle of the road" },
+    swiss: {
+      name: "Swiss",
+      full: "Swiss utility knife",
+      blurb: "wider reach, wears a little faster",
+    },
+  },
+  knifeNote: "Knife stats are game rules only.",
+  hardcore: "Hardcore",
+  hardcoreBody:
+    "In this mode nothing cuts until your knife has been through pickup, sharpening and return.",
+
+  streetTutorial: [
+    {
+      head: "Walk Westfield",
+      body: "You stroll through town. Fruit flies at you out of the alleys: swipe through it.",
+    },
+    {
+      head: "Watch your edge",
+      body: "Every cut wears the blade. As the Edge meter drops, cuts get messy, then stop working.",
+    },
+    {
+      head: "Pop the question",
+      body: "Tap a neighbor to propose pickup, sharpening and return. Expect a no at first. Slice fruit near them to show what you can do, then ask again.",
+    },
+    {
+      head: "Then get it back",
+      body: "When the edge is gone: pickup, sharpening and return, then a sharp second walk.",
+    },
+  ],
+  streetHint: "Swipe the fruit · tap people to propose",
+  walk1Score: "Walk 1",
+  walk2Score: "Walk 2",
+  walk1: "Walk 1 · Dull Days",
+  walk2: "Walk 2 · The Edge Returns",
+  asked: (n: number, yes: number) => `Asked ${n} · Yes ${yes}`,
+  proposal: "Will you marry me?",
+  proposalSub: "Pickup, sharpening and return?",
+  replies: {
+    no: [
+      "We just met!",
+      "Buy me dinner first.",
+      "Ask me after a first date.",
+      "Maybe after the third date.",
+      "I don't even know your name.",
+      "Not today!",
+      "My knife is fine. Probably.",
+      "Show me what you can do first.",
+    ],
+    yes: ["Yes! Pickup, sharpening and return!", "Yes! Take my knives!", "Okay... yes!"],
+  },
+  persistence: "+5 persistence",
+  date: "date",
+  proposals: "Proposals",
+  yeses: "Said yes",
+
   tutorial: [
     {
       head: "Swipe through the fruit",

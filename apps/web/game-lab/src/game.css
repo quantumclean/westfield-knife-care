@@ -342,6 +342,10 @@ body {
   border-radius: 999px;
   padding: 2px 10px;
 }
+.gl-asked:not(:empty) {
+  background: #fff3c4 !important;
+  color: #283b32;
+}
 .gl-streak:not(:empty) {
   background: var(--lemon) !important;
   color: #283b32;
@@ -448,6 +452,30 @@ body {
   font-weight: 600;
   padding-top: 8px;
   border-top: 1px dashed var(--rule);
+}
+.gl-setting select {
+  min-height: 44px;
+  max-width: 62%;
+  padding: 0 14px;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+}
+.gl-setting select:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.gl-hint-text {
+  flex-basis: 100%;
+  margin: 0;
+  max-width: none !important;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  text-align: left;
 }
 .gl-note {
   font-size: 12px;

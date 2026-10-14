@@ -3,15 +3,21 @@
  * Never sent anywhere. Storage can be missing or throw (private mode,
  * sandboxed previews), so every access is guarded and defaults always work.
  */
-import type { LengthMode } from "./levels.ts";
+import { KNIFE_ORDER, type KnifeId, type LengthMode } from "./levels.ts";
 
 export type MotionPref = "system" | "reduce" | "full";
+export type GameMode = "street" | "classic";
 
 export interface Prefs {
   muted: boolean;
   motion: MotionPref;
   length: LengthMode;
+  mode: GameMode;
+  knife: KnifeId;
+  hardcore: boolean;
+  /** Tutorials seen, per mode. */
   seenTutorial: boolean;
+  seenStreet: boolean;
 }
 
 const PREFS_KEY = "wkc.game.prefs";
@@ -21,7 +27,11 @@ export const DEFAULT_PREFS: Prefs = {
   muted: false,
   motion: "system",
   length: "quick",
+  mode: "street",
+  knife: "american",
+  hardcore: false,
   seenTutorial: false,
+  seenStreet: false,
 };
 
 export function loadPrefs(): Prefs {
@@ -33,7 +43,11 @@ export function loadPrefs(): Prefs {
       muted: p.muted === true,
       motion: p.motion === "reduce" || p.motion === "full" ? p.motion : "system",
       length: p.length === "full" ? "full" : "quick",
+      mode: p.mode === "classic" ? "classic" : "street",
+      knife: KNIFE_ORDER.includes(p.knife as KnifeId) ? (p.knife as KnifeId) : "american",
+      hardcore: p.hardcore === true,
       seenTutorial: p.seenTutorial === true,
+      seenStreet: p.seenStreet === true,
     };
   } catch {
     return { ...DEFAULT_PREFS };
